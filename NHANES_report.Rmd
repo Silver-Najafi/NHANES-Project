@@ -1,0 +1,1721 @@
+---
+title: "NHANES 2013–2014 cycle Project Report"
+author:  |
+  Noghre Najafi  
+  *Supervised by Dr. Mark Ghamsary, Professor (Retired), UCLA*
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+output: 
+  html_document:
+    theme: cerulean
+    highlight: tango
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: true
+bibliography: "D:/OIST/NLR/references.bib"
+csl: "D:/OIST/NLR/apa.csl"
+
+
+---
+
+
+# **Introduction**
+
+## **Data Source**
+
+Data were obtained from the **NHANES 2013–2014 cycle**, a nationally representative cross-sectional survey of the U.S. population. This cycle includes about **10,000** participants with demographic, laboratory, physical examination, and questionnaire data.
+
+## **Variables**
+
+- Outcome: hsCRP (high-sensitivity C-reactive protein).
+
+- Clinical/lab: SBP, DBP, Cholesterol, LDL, HDL, Triglycerides, Glucose, CBC indices (WBC, HGB, RBC, MCV, MCH, MCHC, RDW, MPV, PLT), BMI.
+
+- Trace elements: Copper, Zinc (subsample, ~2,500–3,000 participants).
+
+- Derived variables: LdlHdl (LDL/HDL), Zinc_Copper (Zinc/Copper ratio).
+
+- Health history: CVD (0 , 1), Diabetes, HTN, HistoryCVD, HistoryDiabetes.
+
+- Psychosocial/lifestyle: Depression score (PHQ-9), Physical Activity (PAL), Age, Sex (male = 0, female = 1).
+
+## **Notes**
+
+- The analysis included: hsCRP (outcome), HDL, DBP, Cholesterol, BMI, Age, Sex, CVD and Physical Activity (PAL) as predictors.
+
+- NHANES data are collected using standardized protocols and quality-controlled laboratories.
+
+- Sample sizes vary by variable due to subsampling (e.g., trace elements) and missing data.
+
+# **Project Goal**
+
+The primary goal of this project is to implement and evaluate three distinct regression models—**Linear Regression, Binary Logistic Regression**, and **Ordinal Regression**—to predict **hsCRP** using data from the **National Health and Nutrition Examination Survey (NHANES) 2013-2014** cycle.
+
+This nationally representative dataset provides a robust foundation for comparing model performance on a real-world, public health problem. The analysis will determine which modeling technique best captures the relationships within the data and most accurately predicts the outcome. The chosen model could serve as a valuable tool for identifying key factors associated with **hsCRP**.
+
+## **Key steps will include:**
+
+1. Preprocessing the "NHANES" data (handling missing values, encoding categorical variables).
+
+2. Implementing the three regression techniques.
+
+3. Evaluating and comparing model performance using appropriate metrics.
+
+4. Identifying the model with the best fit and highest predictive accuracy for this specific task.
+
+# **Data Cleaning**
+
+## **missing data**
+
+First, we look for missing data to find out how many there are:
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+library(haven)
+data <- read_sav("D:/OIST/OLR/NHANES_data.sav")
+# Count number of missing values per selected variable
+vars <- c("hsCRP", "PAL", "Age", "Sex", 
+          "DBP", "Cholesterol", "BMI","CVD" , "HDL")
+
+## Missing Data Summary
+
+missing_summary <- sapply(data[vars], function(x) sum(is.na(x)))
+missing_summary
+```
+
+About 10% of the data is missing, which is a significant amount.
+
+### **Multiple imputation with MCMC**
+
+We **impute** the missing values using the **MCMC method** in the `mice` package. Convergence is checked by plotting the mean and standard deviation of imputations across iterations. The stable trace plots confirm that the chains have converged.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE }
+
+set.seed(123)
+library(dplyr)
+library(mice)
+library(haven)  # for as_factor()
+
+# Select the variables of interest
+vars <- c("hsCRP", "PAL", "Age", "DBP", 
+          "Cholesterol", "BMI", "HDL", "Sex","CVD")
+
+data_subset <- data %>%
+  select(all_of(vars))
+
+# Convert labelled data to plain numeric/factor before any processing
+data_subset <- data_subset %>%
+  mutate(across(everything(), ~ {
+    if (inherits(.x, "haven_labelled")) {
+      as.numeric(.x)
+    } else {
+      .x
+    }
+  }))
+
+# Continuous variables to numeric
+continuous_vars <- c("hsCRP", "PAL", "Age", 
+                     "DBP", "Cholesterol", "BMI", "HDL")
+
+data_subset[continuous_vars] <- lapply(
+  data_subset[continuous_vars],
+  function(x) as.numeric(as.character(x))
+)
+
+# Binary variables to factor
+binary_vars <- c("CVD", "Sex")
+
+data_subset[binary_vars] <- lapply(
+  data_subset[binary_vars],
+  function(x) factor(as.numeric(as.character(x)), levels = c(0,1))
+)
+
+# Create method vector
+meth <- make.method(data_subset)
+
+# Assign imputation methods
+meth[continuous_vars] <- "norm"
+meth[binary_vars] <- "logreg"
+
+# Run MICE
+imp <- mice(data_subset, method = meth, m =10, seed = 123)
+
+clean_data <- complete(imp, 1)
+# Summary and diagnostics
+plot(imp)
+
+```
+On the left side, the mean of imputed values is shown across iterations for each dataset (colored lines). The lines remain relatively flat and stable, indicating that the mean values have converged. On the right side, the standard deviation of imputed values is shown. Again, the lines are stable across iterations, confirming that the variability of imputations has also converged. Together, **these plots demonstrate that the MCMC imputation process reached convergence with no major fluctuations**.
+
+### **Distribution of imputed values**
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+library(mice)
+# for continuous 
+densityplot(imp, ~ hsCRP + PAL + Age + DBP + Cholesterol + BMI + HDL)
+
+```
+
+Similar distributions indicate stability and convergence, and we can see more stability and convergence in **PAL, Age, DBP, BMI, HDL, Cholesterol** than in **hsCRP** .
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+library(mice)
+# For binaries (stripplot works better)
+stripplot(imp, hsCRP + PAL + Age + DBP + Cholesterol + BMI + HDL ~ .imp)
+
+stripplot(imp, CVD + Sex  ~ .imp, pch = 20, cex = 1.2)
+
+```
+
+The graphs above show the dispersion of the imputed values. We see approximately reasonable dispersions indicating a stable imputation.
+
+## **outliers**
+
+After "imputation" the missing data, we will start discovering the outliers:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+set.seed(123)
+options(digits = 6)
+library(dplyr)
+
+# Continuous variables
+continuous_vars <- c("hsCRP", "PAL",  "Age", 
+                     "DBP", "Cholesterol", "BMI", "HDL")
+
+
+min_value <- min(clean_data$hsCRP, na.rm = TRUE)
+max_value <- max(clean_data$hsCRP, na.rm = TRUE)
+
+# Function to detect outlier indices
+find_outliers <- function(x) {
+  Q1 <- quantile(x, 0.25, na.rm = TRUE)
+  Q3 <- quantile(x, 0.75, na.rm = TRUE)
+  IQR_val <- Q3 - Q1
+  lower_bound <- Q1 - 1.5 * IQR_val
+  upper_bound <- Q3 + 1.5 * IQR_val
+  which(x < lower_bound | x > upper_bound)
+}
+
+# Detect and summarize
+outlier_summary_clean <- lapply(continuous_vars, function(var) {
+  idx <- find_outliers(clean_data[[var]])
+  data.frame(
+    Variable = var,
+    Num_Outliers = length(idx),
+    Percent_Outliers = round(100 * length(idx) / sum(!is.na(clean_data[[var]])), 2)
+  )
+}) %>% bind_rows()
+
+# Show summary table
+outlier_summary_clean
+```
+
+### **Step 1 — Extract outliers with ID for review**
+
+Since there are many **outliers**, we can’t ignore them.
+We need to see which **ID** each outlier belongs to and check the other values for that person. This will show if all their data are unusual or if just this one value was entered wrong.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE , results='hide'}
+set.seed(123)
+options(digits = 6)
+library(dplyr)
+
+# Continuous variables
+continuous_vars <- c("hsCRP", "PAL", "Age", "DBP", "Cholesterol", "BMI", "HDL")
+
+# Test each variable individually to find which one causes the error
+for (var in continuous_vars) {
+  cat("Testing variable:", var, "\n")
+  idx <- find_outliers(clean_data[[var]])
+  cat("Number of outliers:", length(idx), "\n")
+  cat("Length of ID vector:", length(clean_data$ID[idx]), "\n")
+  cat("Length of value vector:", length(clean_data[[var]][idx]), "\n")
+  cat("---\n")
+}
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Use row numbers as IDs to ensure proper indexing
+outlier_details <- lapply(continuous_vars, function(var) {
+  idx <- find_outliers(clean_data[[var]])
+  if (length(idx) > 0) {
+    data.frame(
+      Variable = var,
+      Row_Number = idx,  # Use actual row numbers
+      Value = clean_data[[var]][idx],
+      stringsAsFactors = FALSE
+    )
+  } else {
+    NULL
+  }
+}) %>% bind_rows()
+
+# Show first few results
+head(outlier_details, 10)
+```
+
+### **Step 2 — Define scientific/logical ranges**
+
+We need to consider a normal range for each variable that includes a reasonable amount of even low or high values (for example, people with low or hight blood pressure ) to reduce dispersion as much as possible:
+
+
+* **hsCRP:** 0 to 8 mg/L
+* **PAL:** 1.2 to 2.5 (physical activity index)
+* **Age:** 27 to 73 years (According to the dataset)
+* **DBP:** 40 to 130 mmHg
+* **Cholesterol:** 70 to 200 mg/dL
+* **BMI:** 16 to 40 kg/m²
+* **HDL:** 30 to 120 mg/dL
+
+### **Step 3 — Fix outliers**
+
+we fix the outliers according to the specified ranges.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE }
+
+##########Step 3 — Fix outliers (remove or winsorize)########
+library(dplyr)
+
+#  winsorization
+winsorize_var <- function(x, lower, upper) {
+  x <- ifelse(x < lower, lower, x)
+  x <- ifelse(x > upper, upper, x)
+  return(x)
+}
+
+clean_data <- clean_data %>%
+  mutate(
+    hsCRP = winsorize_var(hsCRP, 0, 8),
+    PAL = winsorize_var(PAL, 1.2, 2.5),
+    Age = winsorize_var(Age, 27, 73),
+    DBP = winsorize_var(DBP, 40, 130),
+    Cholesterol = winsorize_var(Cholesterol, 70, 200),
+    BMI = winsorize_var(BMI, 16, 40),
+    HDL = winsorize_var(HDL, 30, 120)
+  )
+ min(clean_data$hsCRP, na.rm = TRUE)
+ max(clean_data$hsCRP, na.rm = TRUE)
+
+# min and max
+winsor_summary <- data.frame(
+  Variable = continuous_vars,
+  Min_After_Winsor = sapply(continuous_vars, function(var) min(clean_data[[var]], na.rm = TRUE)),
+  Max_After_Winsor = sapply(continuous_vars, function(var) max(clean_data[[var]], na.rm = TRUE)),
+  row.names = NULL
+)
+
+# dislay table
+print(winsor_summary)
+hist(clean_data$hsCRP , col = "pink", border = "white")
+
+
+```
+
+# **Model Building (Linear Regression)**
+
+We began by implementing a Linear Regression model to establish a baseline performance metric for predicting **hsCRP**.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Load necessary packages
+library(broom)
+library(knitr)
+library(formattable)
+library(car)        # For VIF calculation
+library(broom)      # For tidy model summaries
+library(dplyr)
+# Fit the linear regression model
+
+lm_model <- lm(hsCRP ~ PAL + Age + DBP +Cholesterol + BMI + HDL + CVD + Sex ,data= clean_data)
+
+print(lm_model$call)
+# Create coefficient table using broom
+model_summary <- tidy(lm_model)
+model_glance <- glance(lm_model)
+# coefficient 
+cat(" coefficients table \n")
+kable(model_summary, digits = 4, caption = "coefficients table")
+
+cat("\n Model Performance Metrics\n")
+kable(model_glance, digits = 4, caption = "Model Performance Metrics")
+
+
+library(kableExtra)
+
+# Calculate VIF
+vif_values <- vif(lm_model)
+
+# Force into clean data.frame
+vif_table <- data.frame(
+  Variable = names(vif_values),
+  VIF = as.numeric(vif_values)
+)
+
+# Nicely formatted table
+vif_table %>%
+  kbl(caption = "Variance Inflation Factors (VIF)") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
+
+```
+
+The low R-squared suggests that the model explains only a small fraction of the variability in hsCRP. However, the absence of multicollinearity among predictors indicates that the coefficients can still be interpreted with confidence
+
+## **Residual Diagnostics**
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(ggplot2)
+
+# 1. Residuals vs Fitted plot (to check homoscedasticity & linearity)
+plot(lm_model, which = 1)
+
+# 2. Q-Q plot of residuals (to check normality visually)
+plot(lm_model, which = 2)
+# 3. Histogram of residuals
+ggplot(data.frame(resid = residuals(lm_model)), aes(x = resid)) +
+  geom_histogram(color = "black", fill = "lightgreen", bins = 30) +
+  theme_minimal() +
+  labs(title = "Histogram of Residuals",
+       x = "Residuals", y = "Frequency")
+```
+
+The residuals v.s fitted plot shows that the residuals are not randomly scattered around zero, indicating heteroscedasticity. A distinct linear cluster of points appears in the upper part of the plot, likely caused by a subgroup of observations (e.g., binary predictors such as CVD, Sex, or Diabetes) that the model does not capture well. This suggests that the linear regression assumptions are only partially satisfied, and further steps such as response transformation (e.g., log hsCRP , 1/hsCRP ) or considering model refinements may be needed to improve fit.
+
+
+## **Model Comparison (Linear Regression)**
+
+Now we apply the desired transformations to the response variable to choose the best transformation:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(123)
+options(digits = 4)
+
+if(!exists("clean_data")) {
+  clean_data <- complete(imp, 1)
+}
+clean_data <- complete(imp, 1)
+clean_data$log_hsCRP <- log(clean_data$hsCRP+1)
+clean_data$inv_hsCRP <- 1 / (clean_data$hsCRP + 1)
+
+# Libraries
+library(MASS)    # For robust regression (rlm)
+library(e1071)   # For skewness
+library(lmtest)  # For statistical tests
+
+
+# 1) Original model
+cat("\n=== Linear Model ===\n")
+lm_model <- lm(hsCRP ~ PAL + Age + DBP + Cholesterol + BMI + HDL + CVD + Sex,
+               data = clean_data)
+print(lm_model$call)
+# 2) Log-transformed model
+cat("\n=== Log-transformed Model ===\n")
+lm_model_log <- lm(log_hsCRP ~ PAL + Age + DBP + Cholesterol + BMI + HDL + CVD + Sex,
+                   data = clean_data)
+print(lm_model_log$call)
+# 3) Inverse-transformed model
+cat("\n=== Inverse-transformed Model ===\n")
+lm_model_inv <- lm(inv_hsCRP ~ PAL + Age + DBP + Cholesterol + BMI + HDL + CVD + Sex,
+                   data = clean_data)
+print(lm_model_inv$call)
+
+# 2) Fit the robust regression model
+cat("\n=== Robust Model ===\n")
+robust_model <- rlm(hsCRP ~ PAL + Age + DBP + Cholesterol + BMI + HDL + CVD + Sex , data = clean_data)
+
+print(robust_model$call)
+# Function to calculate R-squared for rlm
+library(MASS)
+
+# Function to calculate pseudo-R² for robust regression
+pseudo_r2_rlm <- function(model, y) {
+  y_hat <- fitted(model)
+  ss_res <- sum((y - y_hat)^2)
+  ss_tot <- sum((y - mean(y))^2)
+  r2 <- 1 - ss_res/ss_tot
+  return(r2)
+}
+
+# table for R-squares
+r2_results <- data.frame(
+  Model = c("Linear", "Log-Transformed", "Inverse-Transformed", "Robust"),
+  R2_Type = c("Adjusted R²", "Adjusted R²", "Adjusted R²", "Pseudo-R²"),
+  R2_Value = c(
+    summary(lm_model)$adj.r.squared,
+    summary(lm_model_log)$adj.r.squared,
+    summary(lm_model_inv)$adj.r.squared,
+    pseudo_r2_rlm(robust_model, clean_data$hsCRP)
+  )
+)
+
+print(r2_results)
+
+# 5) Optional: Residual plots for visual check
+# Set plotting area (2x2 grid)
+par(mfrow = c(2, 2))
+
+# 1) Linear regression residuals
+hist(residuals(lm_model),
+     main = "Residuals: Linear Model",
+     xlab = "Residuals",
+     col = "lightblue", border = "white")
+
+# 2) Log-transformed linear regression residuals
+hist(residuals(lm_model_log),
+     main = "Residuals: Log Model",
+     xlab = "Residuals",
+     col = "lightgreen", border = "white")
+
+# 3) Inverse-transformed linear regression residuals
+hist(residuals(lm_model_inv),
+     main = "Residuals: Inverse Model",
+     xlab = "Residuals",
+     col = "lightpink", border = "white")
+
+# 4) Robust regression residuals
+hist(residuals(robust_model),
+     main = "Residuals: Robust Model",
+     xlab = "Residuals",
+     col = "yellow", border = "white")
+
+
+# 6) Cook's distance
+
+# Function to extract max Cook's distance (only for lm models)
+get_cooks <- function(model) {
+  if("lm" %in% class(model)) {
+    return(max(cooks.distance(model)))
+  } else {
+    return(NA) # not applicable for robust regression
+  }
+}
+
+# table cook's D
+cooks_results <- data.frame(
+  Model = c("Linear", "Log-Transformed", "Inverse-Transformed", "Robust"),
+  Max_Cooks_D = c(
+    get_cooks(lm_model),
+    get_cooks(lm_model_log),
+    get_cooks(lm_model_inv),
+    NA 
+  )
+)
+
+print(cooks_results)
+
+
+# 7) Influential points
+# Threshold  4/n 
+n <- nrow(clean_data)
+thr <- 4/n
+
+# Cook's distance for lm models
+cD_linear <- cooks.distance(lm_model)
+cD_log    <- cooks.distance(lm_model_log)
+cD_inv    <- cooks.distance(lm_model_inv)
+
+# Find influential points
+inf_points_linear <- which(cD_linear > thr)
+inf_points_log    <- which(cD_log > thr)
+inf_points_inv    <- which(cD_inv > thr)
+
+# Robust regression - approximate leverage (NOT official Cook's D)
+
+resid_robust <- residuals(robust_model)
+leverage_robust <- hatvalues(lm_model) 
+cD_robust <- resid_robust^2 * leverage_robust / 
+             (robust_model$s^2 * (1 - leverage_robust)^2)
+
+inf_points_robust <- which(cD_robust > thr)
+
+# Print results
+cat("Number of influential points (Linear model):", length(inf_points_linear), "\n")
+cat("Number of influential points (Log model):", length(inf_points_log), "\n")
+cat("Number of influential points (Inverse model):", length(inf_points_inv), "\n")
+cat("Number of influential points (Robust model):", length(inf_points_robust), "\n")
+
+```
+
+Among the tested models, the log-transformed model shows the best performance, with the highest adjusted R² and the lowest number of influential points. The inverse-transformed model is slightly better than the untransformed linear model, but less optimal than the log model. Although the robust model is less sensitive to outliers, its pseudo-R² indicates weaker explanatory power in this dataset.
+**However, all R² values are relatively low (< 10% ), This indicates that the chosen predictors may not adequately explain the variability in hsCRP, and additional or alternative predictors might be needed, And the relatively low R² is not a cause for concern given the large number of data sets.**
+
+Next, we will apply the backward elimination method to identify the predictors that remain statistically significant and thus determine the final model:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(broom)
+library(knitr)
+library(formattable)
+options(digits = 4)
+
+# Fit models
+cat("\n=== Log-transformed Model ===\n")
+lm_model_log <- lm(log_hsCRP ~ PAL + DBP + Age +
+                 Cholesterol + BMI + HDL + CVD + Sex ,
+               data = clean_data)
+model_summary0 <- tidy(lm_model_log)
+model_glance0 <- glance(lm_model_log)
+# coefficient 
+cat(" coefficients table  (Log-transformed Model)\n")
+kable(model_summary0, digits = 4, caption = "coefficients table")
+
+cat("\n Model Performance Metrics\n")
+kable(model_glance0, digits = 4, caption = "Model Performance Metrics")
+###
+
+cat("\n=== No-DBP Model ===\n")
+lm_model1 <- lm(log_hsCRP ~ PAL + Age +
+                        Cholesterol + BMI + HDL + CVD + Sex ,
+                      data = clean_data)
+
+model_summary1 <- tidy(lm_model1)
+model_glance1 <- glance(lm_model1)
+# coefficient 
+cat(" coefficients table  (No-DBP Model)\n")
+kable(model_summary1, digits = 4, caption = "coefficients table")
+
+cat("\n Model Performance Metrics\n")
+kable(model_glance1, digits = 4, caption = "Model Performance Metrics")
+
+###
+
+cat("\n=== No-HDL Model ===\n")
+lm_model2 <- lm(log_hsCRP ~ PAL + Age +
+                        Cholesterol + BMI  + CVD + Sex  ,
+                    data = clean_data)
+model_summary2 <- tidy(lm_model2)
+model_glance2 <- glance(lm_model2)
+# coefficient 
+cat(" coefficients table  (No-HDL Model)\n")
+kable(model_summary2, digits = 4, caption = "coefficients table")
+
+cat("\n Model Performance Metrics\n")
+kable(model_glance2, digits = 4, caption = "Model Performance Metrics")
+```
+**The final linear model** (excluding HDL, DBP) was obtained using backward elimination.
+The significant predictors of **log-transformed hsCRP** are **PAL, Age, Sex, Cholesterol, BMI, and CVD**.
+All predictors in this model **are statistically significant (p < 0.2)**.
+The adjusted R² is 0.0845, indicating that approximately 8.5% of the variability in log(hsCRP) is explained by these predictors.
+Despite the relatively low explanatory power, this model provides a parsimonious representation of the significant associations between hsCRP and the selected clinical variables.
+And for example, the coefficient for **BMI** is **0.0436**.
+This means that for each one-unit increase in BMI, **log(hsCRP)** increases by 0.0436, **holding the other predictors constant**.
+When transformed back to the original scale, this corresponds to approximately a 4.5% increase in hsCRP levels per unit increase in BMI, assuming all other variables in the model remain fixed.
+
+# **Model Building (Binary Logistic Regression)**
+
+We preprocess hsCRP values by setting negatives to zero, capping extremes, and creating a binary variable using a **3 mg/L threshold**. A Binary Logistic Regression model then predicts high inflammation using age, sex, BMI, and other predictors, (The **reference group** includes individuals with **hsCRP ≤ 3 mg/L**, and the model estimates the likelihood of belonging to the hsCRP > 3 mg/L group.) [@hosmer2013applied]
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+# **Model Building ( Binary Logistic Regression )**
+options(digits = 3)
+# replaceing
+clean_data$hsCRP <- ifelse(clean_data$hsCRP < 0, 0, clean_data$hsCRP)
+# winsorize 
+clean_data$hsCRP <- winsorize_var(clean_data$hsCRP, 0, 8)
+
+# threshold 
+threshold <- 3  
+clean_data$hsCRP_binary <- ifelse(clean_data$hsCRP > threshold, 1, 0)
+
+# --- MODEL BUILDING with hsCRP_binary ---
+cat("\n=== Binary Logistic Regression Model ===\n")
+bm_model <- glm(hsCRP_binary ~ Age + Sex + BMI + Cholesterol 
+                + HDL + DBP + PAL + CVD,
+               data = clean_data, family = binomial)
+cat("\n glm(hsCRP_binary ~ Age + Sex + BMI + Cholesterol 
+                + HDL + DBP + PAL + CVD,
+               data = clean_data, family = binomial \n")
+
+# --- MODEL PERFORMANCE EVALUATION ---
+library(pROC)
+library(ResourceSelection)
+library(caret)
+library(broom)
+library(knitr)
+
+# 1. Generate predicted probabilities
+probabilities <- predict(bm_model, type = "response")
+
+# 2. Calculate AUC
+roc_obj <- roc(clean_data$hsCRP_binary, probabilities)
+auc_value <- auc(roc_obj)
+
+# 3. Create binary predictions
+predictions <- ifelse(probabilities > 0.5, 1, 0)
+
+# 4. Calculate confusion matrix
+conf_matrix <- confusionMatrix(as.factor(predictions), 
+                              as.factor(clean_data$hsCRP_binary))
+
+# 5. Calculate Hosmer-Lemeshow test
+hl_test <- hoslem.test(clean_data$hsCRP_binary, probabilities, g = 10)
+
+# 6. Calculate Misclassification Rate
+misclassification_rate <- 1 - conf_matrix$overall["Accuracy"]
+
+performance_metrics <- data.frame(
+  Metric = c("AIC", "AUC", "Accuracy", "Misclassification Rate",
+             "Sensitivity", "Specificity", "Precision", "F1-Score",
+             "Hosmer-Lemeshow Chi-square", "Hosmer-Lemeshow p-value"),
+  Value = c(round(AIC(bm_model), 2),  # AIC
+            round(auc_value, 4),
+            round(conf_matrix$overall["Accuracy"], 4),
+            round(misclassification_rate, 4),
+            round(conf_matrix$byClass["Sensitivity"], 4),
+            round(conf_matrix$byClass["Specificity"], 4),
+            round(conf_matrix$byClass["Precision"], 4),
+            round(conf_matrix$byClass["F1"], 4),
+            round(hl_test$statistic, 4),
+            round(hl_test$p.value, 4))
+)
+
+# --- DISPLAY ONLY WHAT YOU WANT ---
+cat("\n Model Performance Metrics (hsCRP > 3 mg/L)\n")
+kable(performance_metrics, digits = 4)
+
+cat("\n Confusion Matrix\n")
+print(conf_matrix$table)
+
+```
+The model demonstrates a **strong ability to identify positive cases** (high Sensitivity of 0.9543), meaning it correctly captures nearly all actual events of interest. However, this comes at a significant cost: its **ability to correctly identify negative cases is very poor** (low Specificity of 0.1489). This results in a high number of false positives, as seen in the confusion matrix (2841 instances where the model predicted '1' but the true value was '0').
+
+The overall accuracy of 70.05% is moderate but misleading on its own due to this severe imbalance in performance. The AUC of 0.6532 confirms that the model's discriminative power is only fair.
+
+The high F1-Score (0.8136) reflects a reasonably good balance between Precision and Sensitivity for the positive class. The Hosmer-Lemeshow test (p-value = 0.2047 > 0.05) indicates that the model does not suffer from a significant lack of fit and is well-calibrated to the data.
+
+
+## **Model Comparison (Binary Logistic Regression)**
+
+We are going to compare **Binary Logistic Regression** models based on model fit (AIC) and classification performance (Accuracy, Sensitivity, Specificity) to identify the best performing model.
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Updated binary model evaluation code with CI and OR (comments in English)
+
+library(pROC)
+library(caret)
+library(broom)
+library(knitr)
+
+set.seed(123)
+
+# ensure hsCRP has no negative values and winsorize (assumes winsorize_var exists)
+clean_data$hsCRP <- ifelse(clean_data$hsCRP < 0, 0, clean_data$hsCRP)
+clean_data$hsCRP <- winsorize_var(clean_data$hsCRP, 0, 8)
+
+# threshold for binary outcome
+threshold <- 3
+clean_data$hsCRP_binary <- ifelse(clean_data$hsCRP > threshold, 1, 0)
+
+# --- FUNCTION TO CREATE ENHANCED COEFFICIENTS TABLE ---
+create_enhanced_table <- function(model) {
+  # Get coefficients with confidence intervals (not exponentiated)
+  tidy_model <- tidy(model, conf.int = TRUE, exponentiate = FALSE)
+  
+  enhanced_table <- data.frame(
+    Term = tidy_model$term,
+    Coefficient = round(tidy_model$estimate, 4),
+    Std.Error = round(tidy_model$std.error, 4),
+    Coefficient_CI_95 = paste0("(", round(tidy_model$conf.low, 4), ", ", round(tidy_model$conf.high, 4), ")"),
+    Odds_Ratio = round(exp(tidy_model$estimate), 4),
+    OR_CI_95 = paste0("(", round(exp(tidy_model$conf.low), 4), ", ", round(exp(tidy_model$conf.high), 4), ")"),
+    Statistic = round(tidy_model$statistic, 4),
+    P_value = round(tidy_model$p.value, 4)
+  )
+  return(enhanced_table)
+}
+
+# --- MODEL BUILDING with hsCRP_binary ---
+# full model
+bm_model0 <- glm(hsCRP_binary ~ Age + Sex + BMI + Cholesterol + HDL + DBP + PAL + CVD,
+                 data = clean_data, family = binomial)
+
+# Predicted probabilities
+probabilities <- predict(bm_model0, type = "response")
+
+# Create binary predictions (0.5 cutoff)
+predictions <- ifelse(probabilities > 0.5, 1, 0)
+
+# Calculate AUC
+roc_obj <- roc(clean_data$hsCRP_binary, probabilities)
+auc_value <- as.numeric(auc(roc_obj))
+
+# Calculate confusion matrix and accuracy / sensitivity / specificity
+# make sure factor levels match (0,1)
+pred_fac <- factor(predictions, levels = c(0,1))
+ref_fac  <- factor(clean_data$hsCRP_binary, levels = c(0,1))
+
+conf_matrix <- confusionMatrix(pred_fac, ref_fac, positive = "1")
+
+accuracy    <- as.numeric(conf_matrix$overall["Accuracy"])
+sensitivity <- as.numeric(conf_matrix$byClass["Sensitivity"])
+specificity <- as.numeric(conf_matrix$byClass["Specificity"])
+
+# Calculate AIC for the model
+model_aic <- AIC(bm_model0)
+
+# Create performance metrics table (rounded)
+performance_metrics <- data.frame(
+  Metric = c("AUC", "Accuracy", "Sensitivity", "Specificity", "AIC"),
+  Value = c(round(auc_value, 2),
+            round(accuracy, 2),
+            round(sensitivity, 2),
+            round(specificity, 2),
+            round(model_aic, 5))
+)
+
+# --- DISPLAY RESULTS ---
+# Enhanced coefficients table
+cat("Coefficients Table with CI and OR (Full Binary Model)\n")
+kable(create_enhanced_table(bm_model0), digits = 4, 
+      caption = "Coefficients Table with Confidence Intervals and Odds Ratios")
+
+# Performance metrics
+cat("\nModel Performance Metrics\n")
+kable(performance_metrics, digits = 4, caption = "Model Performance Metrics")
+
+# Confusion matrix
+cat("\nConfusion Matrix (rows = Predictions, cols = Reference)\n")
+print(conf_matrix$table)
+
+
+# no-sex model
+bm_model1 <- glm(hsCRP_binary ~ Age + BMI + Cholesterol + HDL + DBP + PAL + CVD,
+                 data = clean_data, family = binomial)
+
+# Predicted probabilities
+probabilities <- predict(bm_model1, type = "response")
+
+# Create binary predictions (0.5 cutoff)
+predictions <- ifelse(probabilities > 0.5, 1, 0)
+
+# Calculate AUC
+roc_obj <- roc(clean_data$hsCRP_binary, probabilities)
+auc_value <- as.numeric(auc(roc_obj))
+
+# Calculate confusion matrix and accuracy / sensitivity / specificity
+# make sure factor levels match (0,1)
+pred_fac <- factor(predictions, levels = c(0,1))
+ref_fac  <- factor(clean_data$hsCRP_binary, levels = c(0,1))
+
+conf_matrix <- confusionMatrix(pred_fac, ref_fac, positive = "1")
+
+accuracy    <- as.numeric(conf_matrix$overall["Accuracy"])
+sensitivity <- as.numeric(conf_matrix$byClass["Sensitivity"])
+specificity <- as.numeric(conf_matrix$byClass["Specificity"])
+
+# Calculate AIC for the model
+model_aic <- AIC(bm_model1)
+
+# Create performance metrics table (rounded)
+performance_metrics <- data.frame(
+  Metric = c("AUC", "Accuracy", "Sensitivity", "Specificity", "AIC"),
+  Value = c(round(auc_value, 2),
+            round(accuracy, 2),
+            round(sensitivity, 2),
+            round(specificity, 2),
+            round(model_aic, 5))
+)
+
+# --- DISPLAY RESULTS ---
+# Enhanced coefficients table
+cat("Coefficients Table with CI and OR (no-sex model)\n")
+kable(create_enhanced_table(bm_model1), digits = 4, 
+      caption = "Coefficients Table with Confidence Intervals and Odds Ratios")
+
+# Performance metrics
+cat("\nModel Performance Metrics\n")
+kable(performance_metrics, digits = 4, caption = "Model Performance Metrics")
+
+# Confusion matrix
+cat("\nConfusion Matrix (rows = Predictions, cols = Reference)\n")
+print(conf_matrix$table)
+
+# no-DBP model
+bm_model2 <- glm(hsCRP_binary ~ Age + BMI + Cholesterol + HDL + PAL + CVD,
+                 data = clean_data, family = binomial)
+
+# Predicted probabilities
+probabilities <- predict(bm_model2, type = "response")
+
+# Create binary predictions (0.5 cutoff)
+predictions <- ifelse(probabilities > 0.5, 1, 0)
+
+# Calculate AUC
+roc_obj <- roc(clean_data$hsCRP_binary, probabilities)
+auc_value <- as.numeric(auc(roc_obj))
+
+# Calculate confusion matrix and accuracy / sensitivity / specificity
+# make sure factor levels match (0,1)
+pred_fac <- factor(predictions, levels = c(0,1))
+ref_fac  <- factor(clean_data$hsCRP_binary, levels = c(0,1))
+
+conf_matrix <- confusionMatrix(pred_fac, ref_fac, positive = "1")
+
+accuracy    <- as.numeric(conf_matrix$overall["Accuracy"])
+sensitivity <- as.numeric(conf_matrix$byClass["Sensitivity"])
+specificity <- as.numeric(conf_matrix$byClass["Specificity"])
+
+# Calculate AIC for the model
+model_aic <- AIC(bm_model2)
+
+# Create performance metrics table (rounded)
+performance_metrics <- data.frame(
+  Metric = c("AUC", "Accuracy", "Sensitivity", "Specificity", "AIC"),
+  Value = c(round(auc_value, 2),
+            round(accuracy, 2),
+            round(sensitivity, 2),
+            round(specificity, 2),
+            round(model_aic, 5))
+)
+
+# --- DISPLAY RESULTS ---
+# Enhanced coefficients table
+cat("Coefficients Table with CI and OR (no-DBP model)\n")
+kable(create_enhanced_table(bm_model2), digits = 4, 
+      caption = "Coefficients Table with Confidence Intervals and Odds Ratios")
+
+# Performance metrics
+cat("\nModel Performance Metrics\n")
+kable(performance_metrics, digits = 4, caption = "Model Performance Metrics")
+
+# Confusion matrix
+cat("\nConfusion Matrix (rows = Predictions, cols = Reference)\n")
+print(conf_matrix$table)
+
+# no-HDL model
+bm_model3 <- glm(hsCRP_binary ~ Age + BMI + Cholesterol + PAL + CVD,
+                 data = clean_data, family = binomial)
+
+# Predicted probabilities
+probabilities <- predict(bm_model3, type = "response")
+
+# Create binary predictions (0.5 cutoff)
+predictions <- ifelse(probabilities > 0.5, 1, 0)
+
+# Calculate AUC
+roc_obj <- roc(clean_data$hsCRP_binary, probabilities)
+auc_value <- as.numeric(auc(roc_obj))
+
+# Calculate confusion matrix and accuracy / sensitivity / specificity
+# make sure factor levels match (0,1)
+pred_fac <- factor(predictions, levels = c(0,1))
+ref_fac  <- factor(clean_data$hsCRP_binary, levels = c(0,1))
+
+conf_matrix <- confusionMatrix(pred_fac, ref_fac, positive = "1")
+
+accuracy    <- as.numeric(conf_matrix$overall["Accuracy"])
+sensitivity <- as.numeric(conf_matrix$byClass["Sensitivity"])
+specificity <- as.numeric(conf_matrix$byClass["Specificity"])
+
+# Calculate AIC for the model
+model_aic <- AIC(bm_model3)
+
+# Create performance metrics table (rounded)
+performance_metrics <- data.frame(
+  Metric = c("AUC", "Accuracy", "Sensitivity", "Specificity", "AIC"),
+  Value = c(round(auc_value, 2),
+            round(accuracy, 2),
+            round(sensitivity, 2),
+            round(specificity, 2),
+            round(model_aic, 5))
+)
+
+# --- DISPLAY RESULTS ---
+# Enhanced coefficients table
+cat("Coefficients Table with CI and OR (no-HDL model)\n")
+kable(create_enhanced_table(bm_model3), digits = 4, 
+      caption = "Coefficients Table with Confidence Intervals and Odds Ratios")
+
+# Performance metrics
+cat("\nModel Performance Metrics\n")
+kable(performance_metrics, digits = 4, caption = "Model Performance Metrics")
+
+# Confusion matrix
+cat("\nConfusion Matrix (rows = Predictions, cols = Reference)\n")
+print(conf_matrix$table)
+```
+
+The **final  model** shows how different factors affect the likelihood of **having high inflammation** (hsCRP > 3 mg/L). Here's what the **odds ratios (OR)** tell us:
+
+**Coefficients Interpretation**
+
+**Age:** 
+Each year of age increases the risk of high inflammation by about 1% (OR = 1.010)
+
+**BMI:**
+Each unit increase in BMI increases the risk by about 12% (OR = 1.117)
+
+**Cholesterol:**
+Each unit increase in cholesterol increases the risk by about 0.5% (OR = 1.005)
+
+**Physical Activity (PAL):**
+Higher activity levels increase the risk by about 68% (OR = 1.677)
+
+**Heart Disease (CVD):**
+Having heart disease increases the risk by about 43% (OR = 1.428)
+
+**Note:**
+The physical activity result is surprising since we usually expect more activity to reduce inflammation. This might need further investigation.
+
+**Model Performance Metrics**
+
+**Accuracy:**
+The model is correct 70% of the time
+
+**Specificity:**
+Very good at identifying people with **low inflammation** (95% correct)
+
+**Specificity:**
+Poor at identifying people with **high inflammation** (only 15% correct)
+
+**Overall Performance:**
+This model would be useful for identifying people with low inflammation levels, but it would miss most people who actually have high inflammation. If you're using this for health screening, you might want to adjust the model or use additional tests to catch more high-risk cases.
+
+# **Model Building (Standard Ordinal Logistic Regression)**
+
+We are going to fit a **Standard Ordinal Logistic** (proportional-odds) model because the **outcome has ordered categories ("Low (<1)", "Medium (1-3)", "High (>3)")** instead of just yes/no. The model estimates how each predictor affects the log-odds of being in a **higher outcome category**, holding other variables constant [@hosmer2013applied].
+Key assumptions to check are the proportional-odds (parallel lines) assumption and reasonable model fit.
+We will also run a test for the **parallel lines assumption** before finalizing interpretation.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(MASS)
+library(pscl)
+library(pROC)
+library(caret)
+library(car)
+library(lmtest)
+library(knitr)   
+library(dplyr)
+library(carData)
+# --- Data preparation ---
+clean_data$hsCRP_ord <- cut(clean_data$hsCRP, 
+                            breaks = c(-Inf, 1, 3, Inf), 
+                            labels = c("Low", "Medium", "High"),
+                            ordered_result = TRUE)
+
+# --- Ordinal regression model ---
+ord_model <- polr(hsCRP_ord ~ PAL + Age + DBP + Cholesterol + BMI + HDL + CVD + Sex,
+                  data = clean_data, Hess = TRUE)
+
+# --- Coefficients table with OR and CI ---
+ctab <- coef(summary(ord_model))
+pvals <- pnorm(abs(ctab[, "t value"]), lower.tail = FALSE) * 2
+
+# Calculate odds ratios
+odds_ratio <- exp(ctab[, "Value"])
+
+# Calculate confidence intervals
+ci <- exp(confint(ord_model))
+
+# Combine all information
+ctab_full <- cbind(
+  ctab,
+  "p.value" = round(pvals, 4),
+  "OR" = round(odds_ratio, 4),
+  "CI 2.5%" = round(ci[, 1], 4),
+  "CI 97.5%" = round(ci[, 2], 4)
+)
+
+kable(ctab_full, caption = "Coefficients Table with OR and CI (Ordinal Logistic Regression)")
+
+# --- Performance metrics with additional measures ---
+probabilities <- predict(ord_model, type = "probs")
+predictions <- predict(ord_model, type = "class")
+
+# multiclass AUC
+actual_numeric <- as.numeric(clean_data$hsCRP_ord)
+predicted_numeric <- as.numeric(predictions)
+multiclass_roc <- multiclass.roc(actual_numeric, predicted_numeric)
+multiclass_auc <- multiclass_roc$auc
+
+# Accuracy
+conf_matrix <- confusionMatrix(predictions, clean_data$hsCRP_ord)
+accuracy <- conf_matrix$overall["Accuracy"]
+
+# Pseudo R2
+pseudo_r2 <- tryCatch({
+  pR2(ord_model)["McFadden"]
+}, error = function(e) NA_real_)
+
+# Calculate -2*log-likelihood and AIC
+loglik <- -2 * as.numeric(logLik(ord_model))
+aic <- AIC(ord_model)
+
+# all in a table
+perf_metrics <- data.frame(
+  Metric = c("Multiclass AUC", "Accuracy", "Pseudo R² (McFadden)", 
+             "-2*Log-Likelihood", "AIC"),
+  Value  = c(
+    round(as.numeric(multiclass_auc), 4), 
+    round(as.numeric(accuracy), 4), 
+    ifelse(is.na(pseudo_r2), NA, round(as.numeric(pseudo_r2), 4)),
+    round(loglik, 2),
+    round(aic, 2)
+  )
+)
+kable(perf_metrics, caption = "Model Performance Metrics")
+
+# --- Tests ---
+
+#  Proportional Odds assumption test
+cat("\n Test of Parallel Lines\n") 
+
+car::poTest(ord_model)
+
+
+# 2. Likelihood ratio test
+null_model <- polr(hsCRP_ord ~ 1, data = clean_data, Hess = TRUE)
+
+# Manual likelihood ratio test calculation
+ll_null <- as.numeric(logLik(null_model))
+ll_full <- as.numeric(logLik(ord_model))
+lr_statistic <- -2 * (ll_null - ll_full)
+df_diff <- attr(logLik(ord_model), "df") - attr(logLik(null_model), "df")
+lr_pvalue <- pchisq(lr_statistic, df = df_diff, lower.tail = FALSE)
+
+# Create results table
+lr_test_tbl <- data.frame(
+  Model_Comparison = "Null vs Full Model",
+  Chi_Square = round(lr_statistic, 2),
+  df = df_diff,
+  p_value = round(lr_pvalue, 4)
+)
+
+kable(lr_test_tbl, caption = "Likelihood Ratio Test: Null vs Full Model")
+
+# --- Confusion Matrix ---
+cat("\n Confusion Matrix\n")
+conf_matrix_df <- as.data.frame.matrix(conf_matrix$table)
+conf_matrix_df <- cbind(Actual = rownames(conf_matrix_df), conf_matrix_df)
+rownames(conf_matrix_df) <- NULL
+kable(conf_matrix_df, caption = "Confusion Matrix")
+```
+
+The **ordinal logistic regression** model was fitted to predict ordered **hsCRP** categories. Model performance was modest:
+multiclass AUC = 0.603, overall accuracy = 0.45, and McFadden’s pseudo-R² = 0.045, indicating limited explanatory power. The likelihood-ratio test comparing the null and full model was highly significant (χ² = 1028, df = 8, p < 0.001), showing the predictors jointly improve model fit.
+
+However, **the proportional-odds (parallel-lines) assumption was rejected** (Brant overall χ² = 29.55, df = 8, p = 0.00025). Item-level tests identified CVD (p = 0.0056) and HDL (p = 0.0297) as significantly non-proportional; PAL was borderline (p ≈ 0.050). This implies that the effect of these predictors differs across the Low→Medium and Medium→High thresholds, so the standard proportional-odds model is not strictly appropriate. The confusion matrix indicated the model tends to predict the middle category more often; class-specific performance (e.g., sensitivity for High) was limited and should be examined when selecting the final approach.
+
+Given this violation, the next step is to apply a **Generalized Ordinal Logistic Regression model**, which relaxes the parallel-lines assumption and allows coefficients to vary across cut-points. This approach provides a more flexible framework for handling predictors with non-proportional effects.
+
+# **Model Building (Generalized Ordinal Logistic Regression)**
+
+We fit a **generalized ordinal logistic model** that **fully relaxes** the parallel-lines assumption (a fully non-parallel specification). In this specification each predictor receives **separate coefficients at each adjacent threshold**, so effects may differ between the Low→Medium and Medium→High transitions. Practically, we will:
+
+1. Fit the full non-parallel model (all predictors free across thresholds).
+
+2. Compare its fit to the standard proportional-odds model using AIC and likelihood-ratio tests to justify the added flexibility.
+
+3. Report threshold-specific odds ratios (ORs) with 95% CIs and classification diagnostics (multiclass AUC, accuracy, confusion matrix).
+
+Interpretation will focus on predictors that show substantively different effects across thresholds (for example, CVD or HDL), and on whether the non-parallel model materially improves fit and predictive performance.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(VGAM)
+library(MASS)
+library(knitr)
+library(dplyr)
+library(pROC)
+library(caret)
+library(lmtest)
+library(brant)
+
+# --- Data Preparation ---
+clean_data$hsCRP_ord <- cut(clean_data$hsCRP, 
+                            breaks = c(-Inf, 1, 3, Inf), 
+                            labels = c("Low", "Medium", "High"),
+                            ordered_result = TRUE)
+
+# --- Generalized Ordinal Logistic Regression ---
+gen_ord_model <- vglm(hsCRP_ord ~ PAL + Age + DBP + Cholesterol + BMI + HDL + CVD + Sex,
+                      family = cumulative(parallel = FALSE, reverse = FALSE),
+                      data = clean_data)
+
+# --- Coefficients Table ---
+coef_summary <- summary(gen_ord_model)@coef3
+odds_ratio <- exp(coef_summary[, "Estimate"])
+ci_lower <- exp(coef_summary[, "Estimate"] - 1.96 * coef_summary[, "Std. Error"])
+ci_upper <- exp(coef_summary[, "Estimate"] + 1.96 * coef_summary[, "Std. Error"])
+
+variable_names <- rownames(coef_summary)
+comparison_levels <- ifelse(grepl(":1", variable_names), "Low vs Medium", 
+                           ifelse(grepl(":2", variable_names), "Low+Medium vs High ", "Intercept"))
+clean_variable_names <- gsub(":1", "", variable_names)
+clean_variable_names <- gsub(":2", "", clean_variable_names)
+
+coefficients_table <- data.frame(
+  Variable = clean_variable_names,
+  Comparison = comparison_levels,
+  Coefficient = round(coef_summary[, "Estimate"], 4),
+  Std_Error = round(coef_summary[, "Std. Error"], 4),
+  Odds_Ratio = round(odds_ratio, 4),
+  CI_2.5 = round(ci_lower, 4),
+  CI_97.5 = round(ci_upper, 4),
+  p_value = round(coef_summary[, "Pr(>|z|)"], 4)
+)
+
+coefficients_table$Variable <- ifelse(duplicated(coefficients_table$Variable), 
+                                     "", coefficients_table$Variable)
+
+kable(coefficients_table, caption = "Generalized Ordinal Logistic Regression Coefficients")
+
+# --- Performance Metrics ---
+predictions <- predict(gen_ord_model, type = "response")
+predicted_classes <- apply(predictions, 1, which.max)
+predicted_classes <- factor(predicted_classes, levels = 1:3, 
+                           labels = c("Low", "Medium", "High"))
+
+conf_matrix <- confusionMatrix(predicted_classes, clean_data$hsCRP_ord)
+
+sensitivity_values <- conf_matrix$byClass[,"Sensitivity"]
+specificity_values <- conf_matrix$byClass[,"Specificity"]
+class_names <- c("Low", "Medium", "High")
+
+# FIXED: Pseudo R-squared calculation
+null_model <- vglm(hsCRP_ord ~ 1, family = cumulative(parallel = FALSE), data = clean_data)
+pseudo_r2 <- 1 - (as.numeric(logLik(gen_ord_model)) / as.numeric(logLik(null_model)))
+
+# Calculate multiclass AUC
+auc_value <- multiclass.roc(clean_data$hsCRP_ord, as.numeric(predicted_classes))$auc
+
+performance_metrics <- data.frame(
+  Metric = c("Accuracy", "Pseudo R-squared", "AIC", "AUC",
+             paste0("Sensitivity (", class_names, ")"),
+             paste0("Specificity (", class_names, ")")),
+  Value = c(round(conf_matrix$overall["Accuracy"], 4),
+            round(pseudo_r2, 4),
+            round(AIC(gen_ord_model), 2),
+            round(auc_value, 4),
+            round(sensitivity_values, 4),
+            round(specificity_values, 4))
+)
+
+kable(performance_metrics, caption = "Model Performance Metrics")
+
+# --- Confusion Matrix ---
+conf_matrix_df <- as.data.frame.matrix(conf_matrix$table)
+conf_matrix_df <- cbind(Actual = rownames(conf_matrix_df), conf_matrix_df)
+rownames(conf_matrix_df) <- NULL
+kable(conf_matrix_df, caption = "Confusion Matrix")
+
+# --- Statistical Tests ---
+# Likelihood Ratio Test
+loglik_null <- as.numeric(logLik(null_model))
+loglik_full <- as.numeric(logLik(gen_ord_model))
+df_diff <- length(coef(gen_ord_model)) - length(coef(null_model))
+lr_statistic <- -2 * (loglik_null - loglik_full)
+lr_pvalue <- pchisq(lr_statistic, df = df_diff, lower.tail = FALSE)
+
+lr_test_table <- data.frame(
+  Test = "Likelihood Ratio Test",
+  Chi_Square = round(lr_statistic, 2),
+  df = df_diff,
+  p_value = round(lr_pvalue, 4)
+)
+
+kable(lr_test_table, caption = "Likelihood Ratio Test Results")
+
+# --- Brant Test (FIXED) ---
+ord_model_polr <- polr(hsCRP_ord ~ PAL + Age + DBP + Cholesterol + BMI + HDL + CVD + Sex,
+                      data = clean_data, Hess = TRUE)
+brant_result <- brant(ord_model_polr)
+
+# FIXED: Correct way to access brant results
+brant_table <- data.frame(
+  Test = "Brant Test",
+  Chi_Square = round(as.numeric(brant_result[1]), 2),
+  df = as.numeric(brant_result[2]),
+  p_value = round(as.numeric(brant_result[3]), 4)
+)
+
+kable(brant_table, caption = "Brant Test for Proportional Odds")
+
+# --- Correct Classification Matrix ---
+correctly_classified <- diag(conf_matrix$table)
+classification_matrix <- data.frame(
+  Class = c("Low", "Medium", "High"),
+  Correctly_Classified = correctly_classified,
+  Total_Observations = colSums(conf_matrix$table),
+  Percentage_Correct = round(correctly_classified / colSums(conf_matrix$table) * 100, 2)
+)
+
+kable(classification_matrix, caption = "Correct Classification Matrix")
+```
+
+**Summary:** The non-parallel ordinal model fits significantly better than the null model (Likelihood-Ratio test), but explanatory power is limited (McFadden pseudo-R² ≈ 0.046) and overall accuracy is moderate (~0.46). The proportional-odds test indicates some predictors (notably CVD and HDL) have non-constant effects across thresholds, so threshold-specific coefficients are reported. The model predicts the Medium category best; classification for Low and High is weaker. In the next section we will compare models more formally (AIC, multiclass AUC, and classification metrics) to select the final approach.
+
+## **Model Comparison (Generalized Ordinal Logistic Regression)**
+
+In this stage, generalized ordinal logistic regression models are compared in order to identify the best-fitting and most parsimonious model. The evaluation focuses on both statistical model fit criteria (such as AIC and pseudo R²) and predictive performance measures (such as accuracy, multiclass AUC, and class-specific sensitivity/specificity).
+
+This process helps in selecting the most reliable model that captures the relationship between predictors and the ordinal outcome while avoiding overfitting.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(VGAM)
+library(MASS)
+library(knitr)
+library(dplyr)
+# --- Data Preparation ---
+clean_data$hsCRP_ord <- cut(clean_data$hsCRP, 
+                            breaks = c(-Inf, 1, 3, Inf), 
+                            labels = c("Low", "Medium", "High"),
+                            ordered_result = TRUE)
+
+cat("\n Full Model \n")
+# --- Generalized Ordinal Logistic Regression (FULL MODEL) ---
+gen_ord_model_full <- vglm(hsCRP_ord ~ PAL + Age + DBP + Cholesterol + BMI + HDL + CVD + Sex,
+                      family = cumulative(parallel = FALSE, reverse = FALSE),
+                      data = clean_data)
+
+# --- Coefficients Table for FULL MODEL---
+coef_summary_full <- summary(gen_ord_model_full)@coef3
+odds_ratio_full <- exp(coef_summary_full[, "Estimate"])
+ci_lower_full <- exp(coef_summary_full[, "Estimate"] - 1.96 * coef_summary_full[, "Std. Error"])
+ci_upper_full <- exp(coef_summary_full[, "Estimate"] + 1.96 * coef_summary_full[, "Std. Error"])
+
+variable_names_full <- rownames(coef_summary_full)
+comparison_levels_full <- ifelse(grepl(":1", variable_names_full), "Low vs Medium", 
+                           ifelse(grepl(":2", variable_names_full), "Low+Medium vs High", "Intercept"))
+clean_variable_names_full <- gsub(":1", "", variable_names_full)
+clean_variable_names_full <- gsub(":2", "", clean_variable_names_full)
+
+coefficients_table_full <- data.frame(
+  Variable = clean_variable_names_full,
+  Comparison = comparison_levels_full,
+  Coefficient = round(coef_summary_full[, "Estimate"], 4),
+  Std_Error = round(coef_summary_full[, "Std. Error"], 4),
+  Odds_Ratio = round(odds_ratio_full, 4),
+  CI_2.5 = round(ci_lower_full, 4),
+  CI_97.5 = round(ci_upper_full, 4),
+  p_value = round(coef_summary_full[, "Pr(>|z|)"], 4)
+)
+
+coefficients_table_full$Variable <- ifelse(duplicated(coefficients_table_full$Variable), 
+                                     "", coefficients_table_full$Variable)
+
+kable(coefficients_table_full, caption = "Generalized Ordinal Logistic Regression Coefficients - Full Model")
+
+# --- Model Comparison Metrics for FULL MODEL---
+# 1. AIC
+aic_value_full <- AIC(gen_ord_model_full)
+
+# 2. Pseudo R-squared (McFadden)
+null_model <- vglm(hsCRP_ord ~ 1, family = cumulative(parallel = FALSE), data = clean_data)
+pseudo_r2_full <- 1 - (as.numeric(logLik(gen_ord_model_full)) / as.numeric(logLik(null_model)))
+
+# 3. Likelihood Ratio Test for FULL MODEL
+loglik_null <- as.numeric(logLik(null_model))
+loglik_full_model <- as.numeric(logLik(gen_ord_model_full))
+df_diff_full <- length(coef(gen_ord_model_full)) - length(coef(null_model))
+lr_statistic_full <- -2 * (loglik_null - loglik_full_model)
+lr_pvalue_full <- pchisq(lr_statistic_full, df = df_diff_full, lower.tail = FALSE)
+
+# --- Display Results for FULL MODEL---
+cat("\n=== FULL MODEL RESULTS ===\n")
+# AIC
+cat("AIC:", round(aic_value_full, 2), "\n\n")
+
+# Pseudo R-squared
+cat("Pseudo R-squared (McFadden):", round(pseudo_r2_full, 4), "\n\n")
+
+# Likelihood Ratio Test Results
+lr_test_table_full <- data.frame(
+  Test = "Likelihood Ratio Test (Full vs Null)",
+  Chi_Square = round(lr_statistic_full, 2),
+  df = df_diff_full,
+  p_value = round(lr_pvalue_full, 4)
+)
+
+kable(lr_test_table_full, caption = "Likelihood Ratio Test: Null vs Full Model")
+
+######### no-sex model
+cat("\n No-Sex Model \n")
+gen_ord_model_no_sex <- vglm(hsCRP_ord ~ PAL + Age + DBP + Cholesterol + BMI + HDL + CVD,
+                      family = cumulative(parallel = FALSE, reverse = FALSE),
+                      data = clean_data)
+
+# --- Coefficients Table for NO-SEX MODEL---
+coef_summary_nosex <- summary(gen_ord_model_no_sex)@coef3
+odds_ratio_nosex <- exp(coef_summary_nosex[, "Estimate"])
+ci_lower_nosex <- exp(coef_summary_nosex[, "Estimate"] - 1.96 * coef_summary_nosex[, "Std. Error"])
+ci_upper_nosex <- exp(coef_summary_nosex[, "Estimate"] + 1.96 * coef_summary_nosex[, "Std. Error"])
+
+variable_names_nosex <- rownames(coef_summary_nosex)
+comparison_levels_nosex <- ifelse(grepl(":1", variable_names_nosex), "Medium vs Low", 
+                           ifelse(grepl(":2", variable_names_nosex), "Low+Medium vs High", "Intercept"))
+clean_variable_names_nosex <- gsub(":1", "", variable_names_nosex)
+clean_variable_names_nosex <- gsub(":2", "", clean_variable_names_nosex)
+
+coefficients_table_nosex <- data.frame(
+  Variable = clean_variable_names_nosex,
+  Comparison = comparison_levels_nosex,
+  Coefficient = round(coef_summary_nosex[, "Estimate"], 4),
+  Std_Error = round(coef_summary_nosex[, "Std. Error"], 4),
+  Odds_Ratio = round(odds_ratio_nosex, 4),
+  CI_2.5 = round(ci_lower_nosex, 4),
+  CI_97.5 = round(ci_upper_nosex, 4),
+  p_value = round(coef_summary_nosex[, "Pr(>|z|)"], 4)
+)
+
+coefficients_table_nosex$Variable <- ifelse(duplicated(coefficients_table_nosex$Variable), 
+                                     "", coefficients_table_nosex$Variable)
+
+kable(coefficients_table_nosex, caption = "Generalized Ordinal Logistic Regression Coefficients - No-Sex Model")
+
+# --- Model Comparison Metrics for NO-SEX MODEL---
+# 1. AIC
+aic_value_nosex <- AIC(gen_ord_model_no_sex)
+
+# 2. Pseudo R-squared (McFadden)
+pseudo_r2_nosex <- 1 - (as.numeric(logLik(gen_ord_model_no_sex)) / as.numeric(logLik(null_model)))
+
+# 3. Likelihood Ratio Test for NO-SEX MODEL
+loglik_nosex <- as.numeric(logLik(gen_ord_model_no_sex))
+df_diff_nosex <- length(coef(gen_ord_model_no_sex)) - length(coef(null_model))
+lr_statistic_nosex <- -2 * (loglik_null - loglik_nosex)
+lr_pvalue_nosex <- pchisq(lr_statistic_nosex, df = df_diff_nosex, lower.tail = FALSE)
+
+# --- Display Results for NO-SEX MODEL---
+cat("\n=== NO-SEX MODEL RESULTS ===\n")
+# AIC
+cat("AIC:", round(aic_value_nosex, 2), "\n\n")
+
+# Pseudo R-squared
+cat("Pseudo R-squared (McFadden):", round(pseudo_r2_nosex, 4), "\n\n")
+
+# Likelihood Ratio Test Results
+lr_test_table_nosex <- data.frame(
+  Test = "Likelihood Ratio Test (No-Sex vs Null)",
+  Chi_Square = round(lr_statistic_nosex, 2),
+  df = df_diff_nosex,
+  p_value = round(lr_pvalue_nosex, 4)
+)
+
+kable(lr_test_table_nosex, caption = "Likelihood Ratio Test: Null vs No-Sex Model")
+
+######### no-DBP model
+cat("\n No-DBP Model \n")
+gen_ord_model_no_dbp <- vglm(hsCRP_ord ~ PAL + Age + Cholesterol + BMI + HDL + CVD ,
+                      family = cumulative(parallel = FALSE, reverse = FALSE),
+                      data = clean_data)
+
+# --- Coefficients Table for NO-DBP MODEL---
+coef_summary_nodbp <- summary(gen_ord_model_no_dbp)@coef3
+odds_ratio_nodbp <- exp(coef_summary_nodbp[, "Estimate"])
+ci_lower_nodbp <- exp(coef_summary_nodbp[, "Estimate"] - 1.96 * coef_summary_nodbp[, "Std. Error"])
+ci_upper_nodbp <- exp(coef_summary_nodbp[, "Estimate"] + 1.96 * coef_summary_nodbp[, "Std. Error"])
+
+variable_names_nodbp <- rownames(coef_summary_nodbp)
+comparison_levels_nodbp <- ifelse(grepl(":1", variable_names_nodbp), "Low vs Medium", 
+                           ifelse(grepl(":2", variable_names_nodbp), "Low+Medium vs High", "Intercept"))
+clean_variable_names_nodbp <- gsub(":1", "", variable_names_nodbp)
+clean_variable_names_nodbp <- gsub(":2", "", clean_variable_names_nodbp)
+
+coefficients_table_nodbp <- data.frame(
+  Variable = clean_variable_names_nodbp,
+  Comparison = comparison_levels_nodbp,
+  Coefficient = round(coef_summary_nodbp[, "Estimate"], 4),
+  Std_Error = round(coef_summary_nodbp[, "Std. Error"], 4),
+  Odds_Ratio = round(odds_ratio_nodbp, 4),
+  CI_2.5 = round(ci_lower_nodbp, 4),
+  CI_97.5 = round(ci_upper_nodbp, 4),
+  p_value = round(coef_summary_nodbp[, "Pr(>|z|)"], 4)
+)
+
+coefficients_table_nodbp$Variable <- ifelse(duplicated(coefficients_table_nodbp$Variable), 
+                                     "", coefficients_table_nodbp$Variable)
+
+kable(coefficients_table_nodbp, caption = "Generalized Ordinal Logistic Regression Coefficients - No-DBP Model")
+
+# --- Model Comparison Metrics for NO-DBP MODEL---
+# 1. AIC
+aic_value_nodbp <- AIC(gen_ord_model_no_dbp)
+
+# 2. Pseudo R-squared (McFadden)
+pseudo_r2_nodbp <- 1 - (as.numeric(logLik(gen_ord_model_no_dbp)) / as.numeric(logLik(null_model)))
+
+# 3. Likelihood Ratio Test for NO-DBP MODEL
+loglik_nodbp <- as.numeric(logLik(gen_ord_model_no_dbp))
+df_diff_nodbp <- length(coef(gen_ord_model_no_dbp)) - length(coef(null_model))
+lr_statistic_nodbp <- -2 * (loglik_null - loglik_nodbp)
+lr_pvalue_nodbp <- pchisq(lr_statistic_nodbp, df = df_diff_nodbp, lower.tail = FALSE)
+
+# --- Display Results for NO-DBP MODEL---
+cat("\n=== NO-DBP MODEL RESULTS ===\n")
+# AIC
+cat("AIC:", round(aic_value_nodbp, 2), "\n\n")
+
+# Pseudo R-squared
+cat("Pseudo R-squared (McFadden):", round(pseudo_r2_nodbp, 4), "\n\n")
+
+# Likelihood Ratio Test Results
+lr_test_table_nodbp <- data.frame(
+  Test = "Likelihood Ratio Test (No-DBP vs Null)",
+  Chi_Square = round(lr_statistic_nodbp, 2),
+  df = df_diff_nodbp,
+  p_value = round(lr_pvalue_nodbp, 4)
+)
+
+kable(lr_test_table_nodbp, caption = "Likelihood Ratio Test: Null vs No-DBP Model")
+
+# --- Model Comparison Table ---
+cat("\n=== MODEL COMPARISON TABLE ===\n")
+
+# Function to calculate performance metrics for each model
+calculate_model_metrics <- function(model, model_name) {
+  # Predictions
+  predictions <- predict(model, type = "response")
+  predicted_classes <- apply(predictions, 1, which.max)
+  predicted_classes <- factor(predicted_classes, levels = 1:3, 
+                             labels = c("Low", "Medium", "High"))
+  
+  # Confusion Matrix
+  conf_matrix <- confusionMatrix(predicted_classes, clean_data$hsCRP_ord)
+  
+  # AUC
+  auc_value <- as.numeric(multiclass.roc(clean_data$hsCRP_ord, as.numeric(predicted_classes))$auc)
+  
+  # Correct Classification Matrix
+  correctly_classified <- diag(conf_matrix$table)
+  total_observations <- colSums(conf_matrix$table)
+  percentage_correct <- correctly_classified / total_observations * 100
+  
+  # AIC
+  aic_value <- AIC(model)
+  
+  # Pseudo R-squared
+  pseudo_r2 <- 1 - (as.numeric(logLik(model)) / as.numeric(logLik(null_model)))
+  
+  # Return results
+  return(data.frame(
+    Model = model_name,
+    AIC = round(aic_value, 2),
+    AUC = round(auc_value, 4),
+    Accuracy = round(conf_matrix$overall["Accuracy"], 4),
+    Pseudo_R2 = round(pseudo_r2, 4),
+    Low_Class_Percent = round(percentage_correct[1], 2),
+    Medium_Class_Percent = round(percentage_correct[2], 2),
+    High_Class_Percent = round(percentage_correct[3], 2),
+    Avg_Class_Percent = round(mean(percentage_correct), 2)
+  ))
+}
+
+# Calculate metrics for all models
+comparison_table <- rbind(
+  calculate_model_metrics(gen_ord_model_full, "Full Model"),
+  calculate_model_metrics(gen_ord_model_no_sex, "No-Sex Model"),
+  calculate_model_metrics(gen_ord_model_no_dbp, "No-DBP Model")
+)
+
+# Display comparison table
+kable(comparison_table, caption = "Model Comparison based on AIC, AUC and Classification Performance")
+
+# --- Detailed Correct Classification Matrices ---
+cat("\n=== DETAILED CORRECT CLASSIFICATION MATRICES ===\n")
+
+# Function to create classification matrix
+create_classification_matrix <- function(model, model_name) {
+  predictions <- predict(model, type = "response")
+  predicted_classes <- apply(predictions, 1, which.max)
+  predicted_classes <- factor(predicted_classes, levels = 1:3, 
+                             labels = c("Low", "Medium", "High"))
+  
+  conf_matrix <- confusionMatrix(predicted_classes, clean_data$hsCRP_ord)
+  correctly_classified <- diag(conf_matrix$table)
+  
+  classification_matrix <- data.frame(
+    Model = model_name,
+    Class = c("Low", "Medium", "High"),
+    Correctly_Classified = correctly_classified,
+    Total_Observations = colSums(conf_matrix$table),
+    Percentage_Correct = round(correctly_classified / colSums(conf_matrix$table) * 100, 2)
+  )
+  
+  return(classification_matrix)
+}
+
+# Create classification matrices for all models
+classification_matrices <- rbind(
+  create_classification_matrix(gen_ord_model_full, "Full Model"),
+  create_classification_matrix(gen_ord_model_no_sex, "No-Sex Model"),
+  create_classification_matrix(gen_ord_model_no_dbp, "No-DBP Model")
+)
+
+# Display classification matrices
+kable(classification_matrices, caption = "Detailed Correct Classification Matrices for All Models")
+
+```
+
+**Interpretation**
+
+**Note on variable retention**
+Removing **CVD** or **HDL** from the model increased AIC in trial runs, and each of these variables showed statistical significance for at least one threshold. Therefore both variables were retained in the final model despite weaker effects at other levels.
+
+
+**Significant Variables at Both Thresholds:**
+
+**Physical Activity Level (PAL):**
+
+- Low vs. Medium: OR = 0.739 (95% CI: 0.625-0.873)
+
+- Combined vs. High: OR = 0.590 (95% CI: 0.502-0.693)
+
+- Interpretation: Higher physical activity significantly reduces the likelihood of being in higher hsCRP categories at both comparison levels.
+
+**Age:**
+
+- Low vs. Medium: OR = 0.987 (95% CI: 0.981-0.992)
+
+- Combined vs. High: OR = 0.990 (95% CI: 0.985-0.995)
+
+- Interpretation: Each additional year of age slightly decreases the probability of belonging to lower hsCRP categories.
+
+**Cholesterol:**
+
+- Low vs. Medium: OR = 0.994 (95% CI: 0.993-0.995)
+
+- Combined vs. High: OR = 0.995 (95% CI: 0.994-0.996)
+
+- Interpretation: Higher cholesterol levels are associated with increased probability of higher hsCRP categories.
+
+**BMI:**
+
+- Low vs. Medium: OR = 0.886 (95% CI: 0.876-0.896)
+
+- Combined vs. High: OR = 0.896 (95% CI: 0.888-0.905)
+
+- Interpretation: Higher BMI significantly increases the probability of elevated hsCRP levels at both thresholds.
+
+**Partially Significant Variables:**
+
+**HDL:**
+
+- Significant only at Combined vs. Low threshold (OR = 0.996	, p = 0.096)
+
+- Interpretation: High-Density Lipoprotein slightly reduces the likelihood of being in the High hsCRP category.(Negligible effect).
+
+**CVD:**
+
+- Significant only at Combined vs. High threshold (OR = 0.721, p = 0.021)
+
+- Interpretation: Cardiovascular disease history reduces the likelihood of being in the High hsCRP category.
+
+**Model Performance Metrics**
+
+**AIC (21874):**
+
+- (slightly lower than alternatives: Full = 21879, No-Sex = 21876) — lower AIC favors this specification.
+
+**Pseudo R² (0.0462):**
+
+- modest explanatory power.(Typical for biological and medical models where numerous unmeasured factors influence outcomes).
+
+**Likelihood-ratio test (No-DBP vs null):**
+
+- predictors collectively improve fit.(χ² = 1058, df = 12, p < 0.001)
+
+**Accuracy (0.455):**
+
+- Moderate overall classification accuracy (45.5%)
+
+- Indicates limitations in precise hsCRP category prediction
+
+**AUC (0.607):**
+
+- Fair discriminative ability (0.6-0.7 range)
+
+- Moderate predictive power for clinical application
+
+**Classification Matrix Analysis**
+
+**Low Category:**
+
+- Only 22.7% correctly classified
+
+- Poor performance in identifying low hsCRP cases
+
+**Medium Category:**
+
+- 72.5% correctly classified
+
+- Best performance across all categories
+
+**High Category:**
+
+28.8% correctly classified
+
+Limited ability to identify high-risk cases
+
+**Clinical and Research Implications**
+
+- This model helps us understand what factors affect hsCRP levels, but it's not perfect for predicting individual cases and shows real relationships between factors like physical activity, age, and cholesterol with hsCRP levels. **It works better for identifying medium risk cases than low or high risk cases**.
+
+- Even though HDL and CVD weren't strongly significant in all tests, keeping them in the model improves its overall quality. The model suggests that other factors we didn't measure probably also affect hsCRP levels.
+
+- Doctors can use this information to understand which patients might have higher inflammation risks
+
+- Researchers should look for additional factors that could improve prediction of low and high hsCRP cases
+
+- The model confirms that lifestyle factors (activity, cholesterol, BMI) are important for inflammation management
+
+- This model gives us useful information about hsCRP, but we need more research to make better predictions, especially for the highest and lowest risk groups.
+
+**Note:** The preservation of HDL and CVD in the final model, despite their partial significance, is justified by the AIC increase upon their removal, indicating they provide valuable explanatory power for hsCRP stratification.
+
+# **Conclusion**
+
+## **Choosing the Right Model for the Right Goal**
+
+Our analysis shows that there is no single "best" model. The best choice depends entirely on **what we want to achieve**. Each of the three models has unique strengths and weaknesses, making it suitable for different purposes.
+
+ **1. Linear Regression: For Predicting a Precise Number**
+
+- **Best for:** Predicting the exact numerical value of a person's hsCRP.
+
+- **Strength:** Its result is easy to understand: "A one-unit increase in BMI is associated with an increase of 0.0449 mg/L in hsCRP level."
+
+- **Key Limitation:** It treats the difference between 1 mg/L and 2 mg/L as clinically equal to the difference between 2 mg/L and 3 mg/L. It ignores the fact that the cut-offs at 1 and 3 mg/L are medically important for categorizing risk.
+
+ **2. Binary Logistic Regression: For Simple Yes/No Screening**
+
+- **Best for:** Quickly **identifying high-risk individuals** (e.g., answering "Is this person's hsCRP > 3 mg/L?"). This is very useful for fast clinical screening.
+
+- **Strength:** Its AUC score **(0.607)** tells us how good the model is at separating the two groups (high-risk vs. not high-risk).
+
+- **Key Limitation:** It loses important information by combining the "Low" and "Medium" categories into one group. It cannot tell us what factors move a person from "Low" to "Medium" risk.
+
+**3. Generalized Ordinal Regression: For Detailed Understanding**
+
+- **Best for: Understanding the full picture** of inflammation and what factors affect each stage of risk. It is the most theoretically correct model for our ordered data (Low < Medium < High).
+
+- **Strength**:The main strength of this model isn't that it gets more answers right overall, but that it gives us a much deeper understanding of how things work. For example, We already knew that physical activity (PAL) helps lower inflammation, But this advanced model showed us how much more effective it is at preventing very high inflammation (it's very strong) compared to preventing mild, "Low" level inflammation (it's only somewhat strong).
+This kind of detailed, valuable insight is impossible to see with the simpler models. They would only tell us that "exercise helps," but not how much more it helps for severe cases
+
+
+it showed us that physical activity (PAL) is a protective factor at both thresholds, but it is stronger at preventing very high inflammation (OR: 0.59) than it is at preventing a move from "Low" to "Medium" (OR: 0.74). This subtle insight is completely hidden in the other models.
+
+- **Key Limitation:** It is more complex to explain. Also, as the confusion matrix showed, while it is excellent at identifying the "Medium" risk group (~73% accuracy), it is less accurate at classifying the "Low" and "High" groups (~23-29%).
+
+## **Final Recommendation**
+
+For this specific study, where the goal was to **understand the factors that move people between different inflammation levels**, the Generalized Ordinal model was chosen as it provides the deepest understanding.
+
+However, for real-world applications:
+
+- Use the **Linear** model if you need to **predict a precise number**.
+
+- Use the **Binary Logistic** model if you need a **simple, fast screening tool** to find high-risk people.
+
+- Use the **Generalized Ordinal** model if you want the **deepest possible insight** from the data to inform public health strategies.
+
+This analysis confirms that the researcher must first define their final goal clearly before choosing a model.
+
+
+# **Limitations**
+
+**Note on Variable Selection**
+In real-world clinical research, model selection is not solely based on statistical significance. In many cases, clinical expertise plays an important role, and certain variables may need to be included in the model even if their p-values are not statistically significant (e.g., p-value up to 0.25 is sometimes acceptable). For this project, however, I focused purely on statistical criteria and only included variables that were significant in the regression analysis, without applying additional clinical constraints
+
+# References
+
