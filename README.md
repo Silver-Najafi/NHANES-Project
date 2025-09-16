@@ -1,5 +1,5 @@
 # NHANES-Project
-This project applies three regression approaches — "Linear Regression", "Binary Logistic Regression", and "Generalized Ordinal Logistic Regression" — to predict hsCRP levels using the NHANES 2013–2014 dataset.  
+This project applies three regression approaches — "Linear Regression", "Binary Logistic Regression", and "Generalized Ordinal Logistic Regression" — to predict hsCRP levels using the NHANES 2013–2014 dataset by using R.  
 The analysis explores different perspectives:  
 - Linear Regression for continuous outcomes,  
 - Binary Logistic Regression for clinical outcome thresholds,  
