@@ -97,7 +97,7 @@ Approximately **10% of the dataset contained missing values**, representing a no
 
 - The trace plots were stable, indicating that the **imputation chains converged successfully**.
 
-- This approach ensures that uncertainty due to missing data is appropriately incorporated into subsequent analyses.
+- This approach ensures that uncertainty due to missing data is appropriately incorporated into subsequent analyses
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE }
 
@@ -237,7 +237,7 @@ outlier_summary_clean
 
 - Numerous **outliers** were present in the dataset and could not be ignored.
 
-- Each outlier was linked to its corresponding **participant ID** to review whether the unusual value was isolated or reflected multiple abnormal entries for that individual.
+- Each outlier was linked to its corresponding **participant ID** to review whether the unusual value was isolated or reflected multiple abnormal entries for that individual
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE , results='hide'}
 set.seed(123)
@@ -280,15 +280,15 @@ head(outlier_details, 10)
 
 ### **Step 2 — Define scientific/logical ranges**
 
-- For each variable, reasonable scientific or logical ranges were established to capture plausible values while minimizing undue dispersion:
+For each variable, reasonable scientific or logical ranges were established to capture plausible values while minimizing undue dispersion:
 
- * **hsCRP:** 0-8 mg/L
- * **PAL (physical activity index):** 1.2-2.5 
- * **Age:** 27-73 years
- * **DBP:** 40-130 mmHg
- * **Cholesterol:** 70-200 mg/dL
- * **BMI:** 16-40 kg/m²
- * **HDL:** 30-120 mg/dL
+* **hsCRP:** 0-8 mg/L
+* **PAL (physical activity index):** 1.2-2.5 
+* **Age:** 27-73 years
+* **DBP:** 40-130 mmHg
+* **Cholesterol:** 70-200 mg/dL
+* **BMI:** 16-40 kg/m²
+* **HDL:** 30-120 mg/dL
 
 ### **Step 3 — Fix outliers**
 
@@ -642,12 +642,12 @@ kable(model_glance2, digits = 4, caption = "Model Performance Metrics")
 
 - Significant predictors of **log-transformed hsCRP** included:
 
- - **Physical Activity Level (PAL)**
- - **Age**
- - **Sex**
- - **Cholesterol**
- - **BMI**
- - **CVD**
+- **Physical Activity Level (PAL)**
+- **Age**
+- **Sex**
+- **Cholesterol**
+- **BMI**
+- **CVD**
 
 - All predictors in this model were **statistically significant (p < 0.2)**.
 
@@ -664,7 +664,7 @@ When transformed back to the original scale, this corresponds to an approximate 
 
 # **Model Building (Binary Logistic Regression)**
 
-We preprocess hsCRP values by setting negatives to zero, capping extremes, and creating a binary variable using a **3 mg/L threshold**. A Binary Logistic Regression model then predicts high inflammation using age, sex, BMI, and other predictors, (The **reference group** includes individuals with **hsCRP ≤ 3 mg/L**, and the model estimates the likelihood of belonging to the hsCRP > 3 mg/L group.) [@hosmer2013applied].
+We preprocess hsCRP values by setting negatives to zero, capping extremes, and creating a binary variable using a **3 mg/L threshold**. A Binary Logistic Regression model then predicts high inflammation using age, sex, BMI, and other predictors, (The **reference group** includes individuals with **hsCRP ≤ 3 mg/L**, and the model estimates the likelihood of belonging to the hsCRP > 3 mg/L group.) [@hosmer2013applied]
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
