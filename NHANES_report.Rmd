@@ -23,45 +23,41 @@ csl: "D:/OIST/NLR/apa.csl"
 
 ## **Data Source**
 
-Data were obtained from the **NHANES 2013–2014 cycle**, a nationally representative cross-sectional survey of the U.S. population. This cycle includes about **10,000** participants with demographic, laboratory, physical examination, and questionnaire data.
+Data were obtained from the **NHANES 2013–2014 cycle**, a nationally representative cross-sectional survey of the U.S. population. This cycle includes approximately **10,000 participants**, providing demographic, laboratory, physical examination, and questionnaire data collected under standardized protocols.
 
 ## **Variables**
 
-- Outcome: hsCRP (high-sensitivity C-reactive protein).
+- **Outcome variable:** hsCRP (high-sensitivity C-reactive protein)
 
-- Clinical/lab: SBP, DBP, Cholesterol, LDL, HDL, Triglycerides, Glucose, CBC indices (WBC, HGB, RBC, MCV, MCH, MCHC, RDW, MPV, PLT), BMI.
+- **Clinical/laboratory:** SBP, DBP, Cholesterol, LDL, HDL, Triglycerides, Glucose, BMI, and complete blood count indices (WBC, HGB, RBC, MCV, MCH, MCHC, RDW, MPV, PLT).
 
-- Trace elements: Copper, Zinc (subsample, ~2,500–3,000 participants).
+- **Trace elements:** Trace elements: Copper, Zinc (available for a subsample of ~2,500–3,000 participants)
 
-- Derived variables: LdlHdl (LDL/HDL), Zinc_Copper (Zinc/Copper ratio).
+- **Derived variables:** LDL/HDL ratio, Zinc/Copper ratio
 
-- Health history: CVD (0 , 1), Diabetes, HTN, HistoryCVD, HistoryDiabetes.
+- **Health history:** CVD (0/1), Diabetes, Hypertension, History of CVD, History of Diabetes.
 
-- Psychosocial/lifestyle: Depression score (PHQ-9), Physical Activity (PAL), Age, Sex (male = 0, female = 1).
+- **Psychosocial/lifestyle:** Depression score (PHQ-9), Physical Activity Level (PAL), Age, Sex (male = 0, female = 1).
 
 ## **Notes**
 
-- The analysis included: hsCRP (outcome), HDL, DBP, Cholesterol, BMI, Age, Sex, CVD and Physical Activity (PAL) as predictors.
+- Analyses focused on hsCRP (outcome) with **HDL, DBP, Cholesterol, BMI, Age, Sex, CVD, and PAL** as predictors.
 
-- NHANES data are collected using standardized protocols and quality-controlled laboratories.
+- NHANES data are collected under rigorous quality control in clinical laboratories.
 
-- Sample sizes vary by variable due to subsampling (e.g., trace elements) and missing data.
+- Sample sizes varied by variable due to subsampling (e.g., trace elements) and missing data.
 
 # **Project Goal**
 
-The primary goal of this project is to implement and evaluate three distinct regression models—**Linear Regression, Binary Logistic Regression**, and **Ordinal Regression**—to predict **hsCRP** using data from the **National Health and Nutrition Examination Survey (NHANES) 2013-2014** cycle.
+The objective of this project is to **implement and evaluate three regression models Linear Regression, Binary Logistic Regression, and Ordinal Logistic Regression** to predict **hsCRP** using NHANES 2013–2014 data.
 
-This nationally representative dataset provides a robust foundation for comparing model performance on a real-world, public health problem. The analysis will determine which modeling technique best captures the relationships within the data and most accurately predicts the outcome. The chosen model could serve as a valuable tool for identifying key factors associated with **hsCRP**.
+This nationally representative dataset provides a strong foundation for assessing model performance on a real-world public health problem. The analysis aims to:
 
-## **Key steps will include:**
+1- Compare model performance and identify the most accurate approach.
 
-1. Preprocessing the "NHANES" data (handling missing values, encoding categorical variables).
+2- Determine key predictors associated with hsCRP.
 
-2. Implementing the three regression techniques.
-
-3. Evaluating and comparing model performance using appropriate metrics.
-
-4. Identifying the model with the best fit and highest predictive accuracy for this specific task.
+3- Highlight the potential of statistical modeling to inform clinical and public health decision making.
 
 # **Data Cleaning**
 
@@ -81,14 +77,27 @@ vars <- c("hsCRP", "PAL", "Age", "Sex",
 ## Missing Data Summary
 
 missing_summary <- sapply(data[vars], function(x) sum(is.na(x)))
-missing_summary
+missing_table <- data.frame(
+  Variable = names(missing_summary),
+  Missing_Count = missing_summary,
+  row.names = NULL
+)
+
+knitr::kable(missing_table, caption = "Missing Data Summary")
+             
 ```
 
-About 10% of the data is missing, which is a significant amount.
+Approximately **10% of the dataset contained missing values**, representing a non-negligible portion that could bias results if ignored.
 
 ### **Multiple imputation with MCMC**
 
-We **impute** the missing values using the **MCMC method** in the `mice` package. Convergence is checked by plotting the mean and standard deviation of imputations across iterations. The stable trace plots confirm that the chains have converged.
+- Missing values were imputed using the **Markov Chain Monte Carlo (MCMC)** method implemented in the `mice` package in R.
+
+- Convergence was assessed by examining trace plots of the **mean and standard deviation** of imputed values across iterations.
+
+- The trace plots were stable, indicating that the **imputation chains converged successfully**.
+
+- This approach ensures that uncertainty due to missing data is appropriately incorporated into subsequent analyses.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE }
 
@@ -146,7 +155,11 @@ clean_data <- complete(imp, 1)
 plot(imp)
 
 ```
-On the left side, the mean of imputed values is shown across iterations for each dataset (colored lines). The lines remain relatively flat and stable, indicating that the mean values have converged. On the right side, the standard deviation of imputed values is shown. Again, the lines are stable across iterations, confirming that the variability of imputations has also converged. Together, **these plots demonstrate that the MCMC imputation process reached convergence with no major fluctuations**.
+
+- The **left panel** of the trace plots displays the mean of imputed values across iterations for each dataset (colored lines). The lines remain relatively flat and stable, indicating convergence of the means.
+- The **right panel** shows the standard deviations of the imputed values. These lines are also stable across iterations, confirming convergence in terms of variability.
+
+- Taken together, the plots demonstrate that the **MCMC imputation process achieved convergence**, with no evidence of systematic drift or major fluctuations.
 
 ### **Distribution of imputed values**
 
@@ -158,7 +171,13 @@ densityplot(imp, ~ hsCRP + PAL + Age + DBP + Cholesterol + BMI + HDL)
 
 ```
 
-Similar distributions indicate stability and convergence, and we can see more stability and convergence in **PAL, Age, DBP, BMI, HDL, Cholesterol** than in **hsCRP** .
+- The distributions of imputed values were examined to assess stability and convergence.
+
+- **PAL, Age, DBP, BMI, HDL, and Cholesterol** exhibited relatively stable distributions across imputations, indicating good convergence.
+
+- **hsCRP**, in contrast, showed slightly more variability across imputations, suggesting that this variable may be more sensitive to missing data.
+
+- Overall, the imputed values demonstrate **general stability and convergence**, supporting the reliability of subsequent analyses
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 
@@ -170,7 +189,7 @@ stripplot(imp, CVD + Sex  ~ .imp, pch = 20, cex = 1.2)
 
 ```
 
-The graphs above show the dispersion of the imputed values. We see approximately reasonable dispersions indicating a stable imputation.
+- The graphs above show the dispersion of the imputed values. We see approximately reasonable dispersions indicating a stable imputation.
 
 ## **outliers**
 
@@ -216,8 +235,9 @@ outlier_summary_clean
 
 ### **Step 1 — Extract outliers with ID for review**
 
-Since there are many **outliers**, we can’t ignore them.
-We need to see which **ID** each outlier belongs to and check the other values for that person. This will show if all their data are unusual or if just this one value was entered wrong.
+- Numerous **outliers** were present in the dataset and could not be ignored.
+
+- Each outlier was linked to its corresponding **participant ID** to review whether the unusual value was isolated or reflected multiple abnormal entries for that individual.
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE , results='hide'}
 set.seed(123)
@@ -260,20 +280,21 @@ head(outlier_details, 10)
 
 ### **Step 2 — Define scientific/logical ranges**
 
-We need to consider a normal range for each variable that includes a reasonable amount of even low or high values (for example, people with low or hight blood pressure ) to reduce dispersion as much as possible:
+- For each variable, reasonable scientific or logical ranges were established to capture plausible values while minimizing undue dispersion:
 
-
-* **hsCRP:** 0 to 8 mg/L
-* **PAL:** 1.2 to 2.5 (physical activity index)
-* **Age:** 27 to 73 years (According to the dataset)
-* **DBP:** 40 to 130 mmHg
-* **Cholesterol:** 70 to 200 mg/dL
-* **BMI:** 16 to 40 kg/m²
-* **HDL:** 30 to 120 mg/dL
+ * **hsCRP:** 0-8 mg/L
+ * **PAL (physical activity index):** 1.2-2.5 
+ * **Age:** 27-73 years
+ * **DBP:** 40-130 mmHg
+ * **Cholesterol:** 70-200 mg/dL
+ * **BMI:** 16-40 kg/m²
+ * **HDL:** 30-120 mg/dL
 
 ### **Step 3 — Fix outliers**
 
-we fix the outliers according to the specified ranges.
+- Values falling outside the defined ranges were adjusted or removed according to the specified thresholds.
+
+- This approach ensures that **extreme or erroneous entries do not bias subsequent analyses**.
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE }
 
@@ -317,7 +338,7 @@ hist(clean_data$hsCRP , col = "pink", border = "white")
 
 # **Model Building (Linear Regression)**
 
-We began by implementing a Linear Regression model to establish a baseline performance metric for predicting **hsCRP**.
+A **Linear Regression** model was first implemented to provide a baseline prediction of hsCRP.
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 # Load necessary packages
@@ -361,7 +382,11 @@ vif_table %>%
 
 ```
 
-The low R-squared suggests that the model explains only a small fraction of the variability in hsCRP. However, the absence of multicollinearity among predictors indicates that the coefficients can still be interpreted with confidence
+- The model yielded a **low R-squared**, indicating that it explains only a small portion of the variability in hsCRP.
+
+- Despite the low explanatory power, **no multicollinearity** was detected among predictors, suggesting that the estimated coefficients are **stable and interpretable**.
+
+- This baseline model provides a reference point for comparing the performance of more complex regression approaches.
 
 ## **Residual Diagnostics**
 
@@ -381,7 +406,17 @@ ggplot(data.frame(resid = residuals(lm_model)), aes(x = resid)) +
        x = "Residuals", y = "Frequency")
 ```
 
-The residuals v.s fitted plot shows that the residuals are not randomly scattered around zero, indicating heteroscedasticity. A distinct linear cluster of points appears in the upper part of the plot, likely caused by a subgroup of observations (e.g., binary predictors such as CVD, Sex, or Diabetes) that the model does not capture well. This suggests that the linear regression assumptions are only partially satisfied, and further steps such as response transformation (e.g., log hsCRP , 1/hsCRP ) or considering model refinements may be needed to improve fit.
+- The **residuals vs. fitted values plot** indicates that residuals are **not randomly scattered around zero**, suggesting **heteroscedasticity**.
+
+- A distinct linear cluster in the upper portion of the plot may reflect a **subgroup of observations** (e.g., binary predictors such as **CVD and Sex**) that the model does not adequately capture.
+
+- These observations imply that the **assumptions of linear regression are only partially satisfied**.
+
+- To address this issue, further steps may include:
+
+ - **Response variable transformation** (e.g., log(hsCRP), 1/hsCRP)
+
+ - Considering **model refinements** or alternative regression techniques to improve model fit and predictive accuracy.
 
 
 ## **Model Comparison (Linear Regression)**
@@ -538,10 +573,19 @@ cat("Number of influential points (Robust model):", length(inf_points_robust), "
 
 ```
 
-Among the tested models, the log-transformed model shows the best performance, with the highest adjusted R² and the lowest number of influential points. The inverse-transformed model is slightly better than the untransformed linear model, but less optimal than the log model. Although the robust model is less sensitive to outliers, its pseudo-R² indicates weaker explanatory power in this dataset.
-**However, all R² values are relatively low (< 10% ), This indicates that the chosen predictors may not adequately explain the variability in hsCRP, and additional or alternative predictors might be needed, And the relatively low R² is not a cause for concern given the large number of data sets.**
+- Among the tested models, the **log-transformed linear regression** demonstrated the **best performance**, achieving the **highest adjusted R²** and the **fewest influential points**.
 
-Next, we will apply the backward elimination method to identify the predictors that remain statistically significant and thus determine the final model:
+- The **inverse-transformed model** performed slightly better than the untransformed linear model but remained **less optimal than the log-transformed model**.
+
+- The **robust regression model**, while less sensitive to outliers, exhibited **weaker explanatory power** based on its pseudo-R² in this dataset.
+
+- Overall, all R² values were relatively low (<10%), suggesting that the current set of predictors may **not fully capture the variability in hsCRP**.
+
+ - This low R² is **not unexpected** given the complex nature of hsCRP and the large, heterogeneous dataset.
+
+ - Additional or alternative predictors may be required to improve model fit.
+
+- **Next steps:** apply **backward elimination** to identify statistically significant predictors and determine the **final parsimonious model**:
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 library(broom)
@@ -593,18 +637,34 @@ kable(model_summary2, digits = 4, caption = "coefficients table")
 cat("\n Model Performance Metrics\n")
 kable(model_glance2, digits = 4, caption = "Model Performance Metrics")
 ```
-**The final linear model** (excluding HDL, DBP) was obtained using backward elimination.
-The significant predictors of **log-transformed hsCRP** are **PAL, Age, Sex, Cholesterol, BMI, and CVD**.
-All predictors in this model **are statistically significant (p < 0.2)**.
-The adjusted R² is 0.0845, indicating that approximately 8.5% of the variability in log(hsCRP) is explained by these predictors.
-Despite the relatively low explanatory power, this model provides a parsimonious representation of the significant associations between hsCRP and the selected clinical variables.
-And for example, the coefficient for **BMI** is **0.0436**.
-This means that for each one-unit increase in BMI, **log(hsCRP)** increases by 0.0436, **holding the other predictors constant**.
-When transformed back to the original scale, this corresponds to approximately a 4.5% increase in hsCRP levels per unit increase in BMI, assuming all other variables in the model remain fixed.
+
+- The **final linear regression model** (excluding HDL and DBP) was obtained through **backward elimination**.
+
+- Significant predictors of **log-transformed hsCRP** included:
+
+ - **Physical Activity Level (PAL)**
+ - **Age**
+ - **Sex**
+ - **Cholesterol**
+ - **BMI**
+ - **CVD**
+
+- All predictors in this model were **statistically significant (p < 0.2)**.
+
+
+- The model achieved an **adjusted R² of 0.0845**, indicating that approximately **8.5% of the variability** in log(hsCRP) was explained by the selected predictors.
+
+- Although the explanatory power remains relatively low, the model provides a **parsimonious and interpretable representation** of the associations between hsCRP and relevant clinical/lifestyle variables.
+
+- The estimated coefficient for **BMI** was **0.0436**.
+
+Interpretation: for each one-unit increase in BMI, **log(hsCRP)** increases by 0.0436, **holding all other predictors constant**.
+
+When transformed back to the original scale, this corresponds to an approximate **4.5% increase in hsCRP levels per unit increase in BMI**, assuming all other variables remain fixed.
 
 # **Model Building (Binary Logistic Regression)**
 
-We preprocess hsCRP values by setting negatives to zero, capping extremes, and creating a binary variable using a **3 mg/L threshold**. A Binary Logistic Regression model then predicts high inflammation using age, sex, BMI, and other predictors, (The **reference group** includes individuals with **hsCRP ≤ 3 mg/L**, and the model estimates the likelihood of belonging to the hsCRP > 3 mg/L group.) [@hosmer2013applied]
+We preprocess hsCRP values by setting negatives to zero, capping extremes, and creating a binary variable using a **3 mg/L threshold**. A Binary Logistic Regression model then predicts high inflammation using age, sex, BMI, and other predictors, (The **reference group** includes individuals with **hsCRP ≤ 3 mg/L**, and the model estimates the likelihood of belonging to the hsCRP > 3 mg/L group.) [@hosmer2013applied].
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
@@ -679,16 +739,54 @@ cat("\n Confusion Matrix\n")
 print(conf_matrix$table)
 
 ```
-The model demonstrates a **strong ability to identify positive cases** (high Sensitivity of 0.9543), meaning it correctly captures nearly all actual events of interest. However, this comes at a significant cost: its **ability to correctly identify negative cases is very poor** (low Specificity of 0.1489). This results in a high number of false positives, as seen in the confusion matrix (2841 instances where the model predicted '1' but the true value was '0').
 
-The overall accuracy of 70.05% is moderate but misleading on its own due to this severe imbalance in performance. The AUC of 0.6532 confirms that the model's discriminative power is only fair.
+**Binary Logistic Regression Model Performance**
 
-The high F1-Score (0.8136) reflects a reasonably good balance between Precision and Sensitivity for the positive class. The Hosmer-Lemeshow test (p-value = 0.2047 > 0.05) indicates that the model does not suffer from a significant lack of fit and is well-calibrated to the data.
+- **Sensitivity (0.9543):**
+
+  The model demonstrates a **strong ability to detect positive cases**, successfully identifying nearly all true events of interest.
+
+- **Specificity (0.1489):**
+
+  The model performs poorly in identifying negative cases, leading to a large number of false positives. Specifically, the confusion matrix shows 2,841 instances where the model incorrectly predicted "1" when the actual outcome was "0".
+
+- **Accuracy (70.05%):**
+
+  While the overall accuracy appears moderate, it is **misleading due to severe imbalance** between sensitivity and specificity.
+
+- **AUC (0.6532):**
+
+  The Area Under the ROC Curve indicates **only fair discriminative power**, suggesting the model has limited ability to distinguish between positive and negative cases.
+
+- **F1-Score (0.8136):**
+
+  Despite the imbalance, the relatively high F1-score reflects a **reasonable balance between precision and sensitivity** for the positive class.
+
+- **Calibration (Hosmer–Lemeshow test, p = 0.2047):**
+
+  Since the p-value is greater than 0.05, the model does not show significant lack of fit and appears to be **well-calibrated to the observed data**.
 
 
 ## **Model Comparison (Binary Logistic Regression)**
 
-We are going to compare **Binary Logistic Regression** models based on model fit (AIC) and classification performance (Accuracy, Sensitivity, Specificity) to identify the best performing model.
+To evaluate the performance of the **Binary Logistic Regression** models, we compare them across two main dimensions:
+
+1- **Model Fit (AIC):**
+
+The Akaike Information Criterion (AIC) is used to assess the relative quality of the models, with lower values indicating a better fit to the data.
+
+2- **Classification Performance:**
+
+We assess the predictive ability of each model based on **Accuracy, Sensitivity, and Specificity**. These metrics provide complementary insights:
+
+- **Accuracy** reflects the overall proportion of correctly classified cases.
+
+- **Sensitivity** evaluates the ability of the model to correctly identify positive outcomes (true events).
+
+- **Specificity** evaluates the ability to correctly identify negative outcomes, which is particularly important for reducing false positives.
+
+By considering both model fit and predictive performance, we aim to identify the **best performing model** that balances statistical adequacy with practical classification ability.
+
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 # Updated binary model evaluation code with CI and OR (comments in English)
 
@@ -936,47 +1034,80 @@ cat("\nConfusion Matrix (rows = Predictions, cols = Reference)\n")
 print(conf_matrix$table)
 ```
 
-The **final  model** shows how different factors affect the likelihood of **having high inflammation** (hsCRP > 3 mg/L). Here's what the **odds ratios (OR)** tell us:
+The **final  model** estimates the likelihood of having **having high inflammation** (hsCRP > 3 mg/L). The interpretation of the **odds ratios (OR)** for each predictor is as follows:
 
 **Coefficients Interpretation**
 
-**Age:** 
-Each year of age increases the risk of high inflammation by about 1% (OR = 1.010)
+- **Age:** 
 
-**BMI:**
-Each unit increase in BMI increases the risk by about 12% (OR = 1.117)
+  Each additional year of age increases the odds of high inflammation by approximately **1%** (OR = 1.010).
 
-**Cholesterol:**
-Each unit increase in cholesterol increases the risk by about 0.5% (OR = 1.005)
+- **BMI:**
 
-**Physical Activity (PAL):**
-Higher activity levels increase the risk by about 68% (OR = 1.677)
+  A one-unit increase in BMI raises the odds of high inflammation by about **12%** (OR = 1.117).
 
-**Heart Disease (CVD):**
-Having heart disease increases the risk by about 43% (OR = 1.428)
+- **Cholesterol:**
 
-**Note:**
-The physical activity result is surprising since we usually expect more activity to reduce inflammation. This might need further investigation.
+  Each unit increase in cholesterol is associated with a **0.5%** increase in risk (OR =1.005)
+
+- **Physical Activity (PAL):**
+
+  Higher physical activity levels are unexpectedly associated with a **68% increase** in odds of high inflammation (OR = 1.677). This counterintuitive finding warrants **further investigation**.
+
+- **Heart Disease (CVD):**
+
+  Individuals with cardiovascular disease have about a **43% higher risk** of high inflammation (OR = 1.428)
+
 
 **Model Performance Metrics**
 
-**Accuracy:**
-The model is correct 70% of the time
+- **Accuracy:**
 
-**Specificity:**
-Very good at identifying people with **low inflammation** (95% correct)
+  The model correctly classifies outcomes ~**70%** of the time.
 
-**Specificity:**
-Poor at identifying people with **high inflammation** (only 15% correct)
+- **Specificity (Low Inflammation):**
+
+T  he model performs **very well** in identifying individuals with low inflammation **(95% correct)**
+
+- **Sensitivity (High Inflammation):**
+
+  The model performs **poorly** in identifying individuals with high inflammation **(only 15% correct)**.
 
 **Overall Performance:**
-This model would be useful for identifying people with low inflammation levels, but it would miss most people who actually have high inflammation. If you're using this for health screening, you might want to adjust the model or use additional tests to catch more high-risk cases.
+
+While the model shows **high specificity**, its **low sensitivity** limits its usefulness in detecting individuals at risk of high inflammation. In a **health screening context**, this means the model would miss many true high-risk cases, potentially leading to underdiagnosis.
 
 # **Model Building (Standard Ordinal Logistic Regression)**
 
-We are going to fit a **Standard Ordinal Logistic** (proportional-odds) model because the **outcome has ordered categories ("Low (<1)", "Medium (1-3)", "High (>3)")** instead of just yes/no. The model estimates how each predictor affects the log-odds of being in a **higher outcome category**, holding other variables constant [@hosmer2013applied].
-Key assumptions to check are the proportional-odds (parallel lines) assumption and reasonable model fit.
-We will also run a test for the **parallel lines assumption** before finalizing interpretation.
+We now fit a **Standard Ordinal Logistic Regression** model (Proportional-Odds Model) because the outcome variable has **three ordered categories**:
+
+- **Low (<1)**
+
+- **Medium (1–3)**
+
+- **High (>3)**
+
+This type of model is suitable when categories have a natural order (low → medium → high), but the spacing between them is not necessarily equal.
+
+**Interpretation**
+
+The model estimates how each predictor influences the **odds of being in a higher inflammation category** (e.g., moving from Low to Medium, or from Medium to High), while holding all other predictors constant [@hosmer2013applied].
+
+**Key Assumptions to Check**
+
+1- **Proportional-Odds (Parallel Lines) Assumption**
+
+- The effect of each predictor is assumed to be consistent across all thresholds of the outcome.
+
+- Example: The effect of BMI on moving from Low → Medium is the same as its effect on moving from Medium → High.
+
+2- **Model Fit**
+
+- The model should adequately represent the observed data without systematic bias.
+
+**Next Step**
+
+Before finalizing interpretation, we will run a statistical test for the **parallel lines assumption**. If this assumption does not hold, alternative modeling approaches (e.g., partial proportional-odds models or multinomial logistic regression) may be considered.
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 library(MASS)
@@ -1092,24 +1223,77 @@ rownames(conf_matrix_df) <- NULL
 kable(conf_matrix_df, caption = "Confusion Matrix")
 ```
 
-The **ordinal logistic regression** model was fitted to predict ordered **hsCRP** categories. Model performance was modest:
-multiclass AUC = 0.603, overall accuracy = 0.45, and McFadden’s pseudo-R² = 0.045, indicating limited explanatory power. The likelihood-ratio test comparing the null and full model was highly significant (χ² = 1028, df = 8, p < 0.001), showing the predictors jointly improve model fit.
+The **ordinal logistic regression model** was fitted to predict ordered categories of **hsCRP** (Low < 1, Medium 1–3, High > 3).
 
-However, **the proportional-odds (parallel-lines) assumption was rejected** (Brant overall χ² = 29.55, df = 8, p = 0.00025). Item-level tests identified CVD (p = 0.0056) and HDL (p = 0.0297) as significantly non-proportional; PAL was borderline (p ≈ 0.050). This implies that the effect of these predictors differs across the Low→Medium and Medium→High thresholds, so the standard proportional-odds model is not strictly appropriate. The confusion matrix indicated the model tends to predict the middle category more often; class-specific performance (e.g., sensitivity for High) was limited and should be examined when selecting the final approach.
+**Model Performance**
 
-Given this violation, the next step is to apply a **Generalized Ordinal Logistic Regression model**, which relaxes the parallel-lines assumption and allows coefficients to vary across cut-points. This approach provides a more flexible framework for handling predictors with non-proportional effects.
+- **Multiclass AUC:** 0.603
+
+- **Overall accuracy:** 0.45
+
+- **McFadden’s pseudo-R²:** 0.045
+
+These values indicate **modest performance** and limited explanatory power. However, **the likelihood-ratio test** comparing the null and full model was highly significant (χ² = 1028, df = 8, p < 0.001), confirming that the predictors jointly improve the fit relative to the null model.
+
+**Assumption Testing (Proportional-Odds / Parallel Lines)**
+
+- The **Brant test** rejected the proportional-odds assumption (χ² = 29.55, df = 8, p = 0.00025).
+
+- **Item-level violations:**
+
+ - **CVD:** p = 0.0056 (non-proportional)
+
+ - **HDL:** p = 0.0297 (non-proportional)
+
+ - **PAL:** borderline (p ≈ 0.050)
+
+This result indicates that the effect of these predictors is **not constant across outcome thresholds** (e.g., their effect on Low→Medium differs from Medium→High).
+
+**Classification Patterns**
+
+The **confusion matrix** showed that the model tends to **overpredict the middle (Medium) category**, while sensitivity for the **High** category was limited. This suggests that predictive accuracy varies substantially across categories and should be considered when interpreting the results.
+
+**Next Step**
+
+Because the **parallel-lines assumption is violated**, the **standard proportional-odds model is not strictly appropriate**. A more flexible alternative is the **Generalized Ordinal Logistic Regression model**, which relaxes the assumption and allows **coefficients to vary across thresholds**. This approach provides a better framework for handling predictors with non-proportional effects and is recommended for further analysis.
 
 # **Model Building (Generalized Ordinal Logistic Regression)**
 
-We fit a **generalized ordinal logistic model** that **fully relaxes** the parallel-lines assumption (a fully non-parallel specification). In this specification each predictor receives **separate coefficients at each adjacent threshold**, so effects may differ between the Low→Medium and Medium→High transitions. Practically, we will:
+To address the violation of the proportional-odds assumption, we fit a **Generalized Ordinal Logistic Regression model** that **fully relaxes** the parallel-lines constraint. In this specification, each predictor is allowed to have **different coefficients at each threshold** (Low → Medium and Medium → High). This means that the effect of a variable (e.g., CVD, HDL) may differ depending on which transition is being modeled.
 
-1. Fit the full non-parallel model (all predictors free across thresholds).
+**Planned Steps**
 
-2. Compare its fit to the standard proportional-odds model using AIC and likelihood-ratio tests to justify the added flexibility.
+1- **Fit the full non-parallel model**
 
-3. Report threshold-specific odds ratios (ORs) with 95% CIs and classification diagnostics (multiclass AUC, accuracy, confusion matrix).
+- All predictors are estimated with separate coefficients across thresholds.
 
-Interpretation will focus on predictors that show substantively different effects across thresholds (for example, CVD or HDL), and on whether the non-parallel model materially improves fit and predictive performance.
+2- **Model comparison**
+
+- Compare the generalized model to the standard proportional-odds model using **AIC** and **likelihood-ratio tests**.
+
+- This establishes whether the added flexibility yields a meaningful improvement in fit.
+
+3- **Report results**
+
+- Present threshold-specific odds ratios (ORs) with 95% confidence intervals.
+
+- Provide classification diagnostics, including:
+
+ - Multiclass AUC
+
+ - Overall accuracy
+
+ - Confusion matrix
+
+**Interpretation Strategy**
+
+- Emphasis will be placed on predictors that show **substantively different effects across thresholds**.
+
+ - Example: **CVD or HDL**, which were flagged in the Brant test as non-proportional.
+
+- Assess whether the **non-parallel model improves predictive performance** compared to the proportional-odds model.
+
+- Discuss whether the added complexity is justified by clearer or more accurate insights into the factors influencing hsCRP categories.
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 library(VGAM)
@@ -1243,13 +1427,55 @@ classification_matrix <- data.frame(
 kable(classification_matrix, caption = "Correct Classification Matrix")
 ```
 
-**Summary:** The non-parallel ordinal model fits significantly better than the null model (Likelihood-Ratio test), but explanatory power is limited (McFadden pseudo-R² ≈ 0.046) and overall accuracy is moderate (~0.46). The proportional-odds test indicates some predictors (notably CVD and HDL) have non-constant effects across thresholds, so threshold-specific coefficients are reported. The model predicts the Medium category best; classification for Low and High is weaker. In the next section we will compare models more formally (AIC, multiclass AUC, and classification metrics) to select the final approach.
+**Summary of Generalized Ordinal Logistic Model**
+
+The **generalized ordinal logistic regression model** provided a significantly better fit than the null model (Likelihood-Ratio test). However, its **explanatory power remained limited** (McFadden’s pseudo-R² ≈ 0.046) and the **overall accuracy was moderate (~0.46)**.
+
+Importantly, the **proportional-odds assumption was violated** for some predictors, particularly **CVD** and **HDL**, indicating that their effects differ across outcome thresholds. Accordingly, **threshold-specific coefficients** were reported for these variables.
+
+In terms of classification, the model performed **best for the Medium category**, while prediction of the Low and High categories was weaker.
+
+**Next Steps**
+
+In the following section, we will conduct a formal model comparison using:
+
+- **AIC**
+
+- **Multiclass AUC**
+
+- **Classification metrics** (e.g., sensitivity and specificity by category)
+
+This will help determine which modeling approach provides the most reliable balance of fit and predictive performance.
 
 ## **Model Comparison (Generalized Ordinal Logistic Regression)**
 
-In this stage, generalized ordinal logistic regression models are compared in order to identify the best-fitting and most parsimonious model. The evaluation focuses on both statistical model fit criteria (such as AIC and pseudo R²) and predictive performance measures (such as accuracy, multiclass AUC, and class-specific sensitivity/specificity).
+At this stage, we **compare generalized ordinal logistic regression models** to **identify the best fitting and most parsimonious specification**.
 
-This process helps in selecting the most reliable model that captures the relationship between predictors and the ordinal outcome while avoiding overfitting.
+**Evaluation Criteria**
+
+- **Model fit:**
+
+ - **AIC** (Akaike Information Criterion)
+
+ - **Pseudo R²** measures
+
+- **Predictive performance:**
+
+ - **Overall accuracy**
+
+ - **Multiclass AUC**
+
+ - **Class-specific sensitivity and specificity**
+
+**Rationale**
+
+This comparison process ensures that the selected model:
+
+1- **Adequately explains** the relationship between predictors and the ordinal outcome.
+
+2- Provides **reliable predictive performance** across all categories (Low, Medium, High).
+
+3- Avoids **overfitting**, by balancing flexibility with parsimony.
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 library(VGAM)
@@ -1549,173 +1775,143 @@ kable(classification_matrices, caption = "Detailed Correct Classification Matric
 
 **Interpretation**
 
-**Note on variable retention**
-Removing **CVD** or **HDL** from the model increased AIC in trial runs, and each of these variables showed statistical significance for at least one threshold. Therefore both variables were retained in the final model despite weaker effects at other levels.
+**Variable Retention**
+
+During model testing, removing **CVD** or **HDL** led to higher AIC values. Since each was statistically significant at least at one threshold, both variables were retained in the final model, even though their effects were weaker at other levels.
 
 
-**Significant Variables at Both Thresholds:**
+**Key Significant Predictors (Both Thresholds)**
 
 **Physical Activity Level (PAL):**
 
-- Low vs. Medium: OR = 0.739 (95% CI: 0.625-0.873)
+- Low → Medium: OR = 0.739 (95% CI: 0.625–0.873)
 
-- Combined vs. High: OR = 0.590 (95% CI: 0.502-0.693)
+- Medium → High: OR = 0.590 (95% CI: 0.502–0.693)
 
-- Interpretation: Higher physical activity significantly reduces the likelihood of being in higher hsCRP categories at both comparison levels.
+- Interpretation: The more active people are, the less likely they are to have high hsCRP. Physical activity clearly shows a protective effect.
 
 **Age:**
 
-- Low vs. Medium: OR = 0.987 (95% CI: 0.981-0.992)
+- Low → Medium: OR = 0.987 (95% CI: 0.981–0.992)
 
-- Combined vs. High: OR = 0.990 (95% CI: 0.985-0.995)
+- Medium → High: OR = 0.990 (95% CI: 0.985–0.995)
 
-- Interpretation: Each additional year of age slightly decreases the probability of belonging to lower hsCRP categories.
+- Interpretation: Surprisingly, older age was linked to slightly lower hsCRP. This could be due to other factors such as medication use, lifestyle differences, or specific characteristics of the sample.
 
 **Cholesterol:**
 
-- Low vs. Medium: OR = 0.994 (95% CI: 0.993-0.995)
+- Low → Medium: OR = 0.994 (95% CI: 0.993–0.995)
 
-- Combined vs. High: OR = 0.995 (95% CI: 0.994-0.996)
+- Medium → High: OR = 0.995 (95% CI: 0.994–0.996)
 
-- Interpretation: Higher cholesterol levels are associated with increased probability of higher hsCRP categories.
-
+- Interpretation: Higher cholesterol levels were associated with a higher chance of elevated hsCRP, even though the effect size was small.
 **BMI:**
 
-- Low vs. Medium: OR = 0.886 (95% CI: 0.876-0.896)
+- Low → Medium: OR = 0.886 (95% CI: 0.876–0.896)
 
-- Combined vs. High: OR = 0.896 (95% CI: 0.888-0.905)
+- Medium → High: OR = 0.896 (95% CI: 0.888–0.905)
 
-- Interpretation: Higher BMI significantly increases the probability of elevated hsCRP levels at both thresholds.
+- Interpretation: This was one of the strongest predictors. Higher BMI was strongly linked to higher inflammation, which is consistent with findings from other studies
 
-**Partially Significant Variables:**
+**Partially Significant Predictors:**
 
 **HDL:**
 
-- Significant only at Combined vs. Low threshold (OR = 0.996	, p = 0.096)
+- Only significant for Medium → High (OR = 0.996, p = 0.096)
 
-- Interpretation: High-Density Lipoprotein slightly reduces the likelihood of being in the High hsCRP category.(Negligible effect).
+- Interpretation: The effect was very small. HDL didn’t show a strong protective role in this dataset.
 
 **CVD:**
 
-- Significant only at Combined vs. High threshold (OR = 0.721, p = 0.021)
+- Significant only for Medium → High (OR = 0.721, p = 0.021).
 
-- Interpretation: Cardiovascular disease history reduces the likelihood of being in the High hsCRP category.
+- Interpretation: Interestingly, people with CVD were less likely to be in the high hsCRP group. A possible explanation is that many of them take medications (like statins) that help reduce inflammation.
 
 **Model Performance Metrics**
 
-**AIC (21874):**
+**AIC = 21,874** → Slightly better than alternatives (Full = 21,879; No-Sex = 21,876).
 
-- (slightly lower than alternatives: Full = 21879, No-Sex = 21876) — lower AIC favors this specification.
+**Pseudo R² = 0.0462** → Low explanatory power (common in biomedical models with many unmeasured influences).
 
-**Pseudo R² (0.0462):**
+**Likelihood-ratio test:** χ² = 1058, df = 12, p < 0.001 → Predictors collectively improve fit.
 
-- modest explanatory power.(Typical for biological and medical models where numerous unmeasured factors influence outcomes).
+**Accuracy = 0.455 (45.5%)** → Moderate classification ability.
 
-**Likelihood-ratio test (No-DBP vs null):**
+**Multiclass AUC = 0.607** → Fair discrimination (typical for clinical prediction)
 
-- predictors collectively improve fit.(χ² = 1058, df = 12, p < 0.001)
+**Classification Matrix Insights**
 
-**Accuracy (0.455):**
+- **Low category:** 22.7% correctly classified → weak performance.
 
-- Moderate overall classification accuracy (45.5%)
+- **Medium category:** 72.5% correctly classified → strongest performance.
 
-- Indicates limitations in precise hsCRP category prediction
-
-**AUC (0.607):**
-
-- Fair discriminative ability (0.6-0.7 range)
-
-- Moderate predictive power for clinical application
-
-**Classification Matrix Analysis**
-
-**Low Category:**
-
-- Only 22.7% correctly classified
-
-- Poor performance in identifying low hsCRP cases
-
-**Medium Category:**
-
-- 72.5% correctly classified
-
-- Best performance across all categories
-
-**High Category:**
-
-28.8% correctly classified
-
-Limited ability to identify high-risk cases
+- **High category:** 28.8% correctly classified → limited identification of high-risk cases
 
 **Clinical and Research Implications**
 
-- This model helps us understand what factors affect hsCRP levels, but it's not perfect for predicting individual cases and shows real relationships between factors like physical activity, age, and cholesterol with hsCRP levels. **It works better for identifying medium risk cases than low or high risk cases**.
+- The model shows that **lifestyle and metabolic factors (PAL, BMI, cholesterol)** are consistently important for hsCRP levels.
 
-- Even though HDL and CVD weren't strongly significant in all tests, keeping them in the model improves its overall quality. The model suggests that other factors we didn't measure probably also affect hsCRP levels.
+- It performs best for identifying **medium-risk individuals**, but has weaker ability for low- and high-risk groups.
 
-- Doctors can use this information to understand which patients might have higher inflammation risks
+- **HDL and CVD** contribute modestly but improve the overall model fit, so their inclusion is justified.
 
-- Researchers should look for additional factors that could improve prediction of low and high hsCRP cases
+- Clinically, results suggest that interventions targeting **physical activity, BMI, and cholesterol** are central for inflammation management.
 
-- The model confirms that lifestyle factors (activity, cholesterol, BMI) are important for inflammation management
+- For research, future studies should include additional predictors to better capture low- and high-risk hsCRP cases.
 
-- This model gives us useful information about hsCRP, but we need more research to make better predictions, especially for the highest and lowest risk groups.
-
-**Note:** The preservation of HDL and CVD in the final model, despite their partial significance, is justified by the AIC increase upon their removal, indicating they provide valuable explanatory power for hsCRP stratification.
+- Overall, the model provides **useful insights rather than precise predictions**, highlighting both the promise and the limitations of current data.
 
 # **Conclusion**
 
 ## **Choosing the Right Model for the Right Goal**
 
-Our analysis shows that there is no single "best" model. The best choice depends entirely on **what we want to achieve**. Each of the three models has unique strengths and weaknesses, making it suitable for different purposes.
+Our analysis highlights that there is no single “best” model. The choice of model depends on the **specific goal of the analysis**. Each approach has unique strengths and weaknesses, making it more or less suitable depending on the context.
 
- **1. Linear Regression: For Predicting a Precise Number**
+**1. Linear Regression — Predicting an Exact Value**
 
-- **Best for:** Predicting the exact numerical value of a person's hsCRP.
+- **Best for:** Estimating the precise hsCRP level for an individual.
 
-- **Strength:** Its result is easy to understand: "A one-unit increase in BMI is associated with an increase of 0.0449 mg/L in hsCRP level."
+- **Strength:** Results are simple to interpret. For example, “Each one-unit increase in BMI is associated with a 0.0449 mg/L increase in hsCRP.”
 
-- **Key Limitation:** It treats the difference between 1 mg/L and 2 mg/L as clinically equal to the difference between 2 mg/L and 3 mg/L. It ignores the fact that the cut-offs at 1 and 3 mg/L are medically important for categorizing risk.
+- **Limitation:** It does not account for medical cut-offs (1 and 3 mg/L). From a clinical standpoint, predicting whether someone crosses a threshold is often more meaningful than predicting the exact number.
 
- **2. Binary Logistic Regression: For Simple Yes/No Screening**
+**2. Binary Logistic Regression — Quick Yes/No Screening**
 
-- **Best for:** Quickly **identifying high-risk individuals** (e.g., answering "Is this person's hsCRP > 3 mg/L?"). This is very useful for fast clinical screening.
+- **Best for:** Identifying **high-risk individuals** (hsCRP > 3 mg/L). This makes it a useful tool for fast clinical screening.
 
-- **Strength:** Its AUC score **(0.607)** tells us how good the model is at separating the two groups (high-risk vs. not high-risk).
+- **Strength:** The AUC of **0.607** shows modest ability to separate high-risk from low-risk patients. Its simplicity makes it easy to apply in practice.
 
-- **Key Limitation:** It loses important information by combining the "Low" and "Medium" categories into one group. It cannot tell us what factors move a person from "Low" to "Medium" risk.
+- **Limitation:** It collapses the “Low” and “Medium” groups into a single category, which removes valuable information. The model cannot distinguish what factors drive someone from Low to Medium risk.
 
-**3. Generalized Ordinal Regression: For Detailed Understanding**
+**3. Generalized Ordinal Regression — Understanding the Full Risk Spectrum**
 
-- **Best for: Understanding the full picture** of inflammation and what factors affect each stage of risk. It is the most theoretically correct model for our ordered data (Low < Medium < High).
+- **Best for:** Exploring how risk factors influence **different stages of inflammation** (Low → Medium → High).
 
-- **Strength**:The main strength of this model isn't that it gets more answers right overall, but that it gives us a much deeper understanding of how things work. For example, We already knew that physical activity (PAL) helps lower inflammation, But this advanced model showed us how much more effective it is at preventing very high inflammation (it's very strong) compared to preventing mild, "Low" level inflammation (it's only somewhat strong).
-This kind of detailed, valuable insight is impossible to see with the simpler models. They would only tell us that "exercise helps," but not how much more it helps for severe cases
+- **Strength:** Unlike the simpler models, it uncovers **how the strength of effects changes across thresholds**.
 
+Example: Physical activity (PAL) was protective at both thresholds, but much stronger in preventing **high inflammation** (OR = 0.59) compared to just preventing a shift from Low to Medium (OR = 0.74).
 
-it showed us that physical activity (PAL) is a protective factor at both thresholds, but it is stronger at preventing very high inflammation (OR: 0.59) than it is at preventing a move from "Low" to "Medium" (OR: 0.74). This subtle insight is completely hidden in the other models.
+This level of detail is **hidden** in the other models. They can only say “exercise helps,” while this model tells us where it helps the most.
 
-- **Key Limitation:** It is more complex to explain. Also, as the confusion matrix showed, while it is excellent at identifying the "Medium" risk group (~73% accuracy), it is less accurate at classifying the "Low" and "High" groups (~23-29%).
+- **Limitation:** It is harder to explain and less accurate at predicting the extremes (Low = ~23% correct, High = ~29%) compared to the Medium group (~73%).
 
 ## **Final Recommendation**
 
-For this specific study, where the goal was to **understand the factors that move people between different inflammation levels**, the Generalized Ordinal model was chosen as it provides the deepest understanding.
+- **Linear regression** is best when we want exact numerical predictions.
 
-However, for real-world applications:
+- **Binary logistic regression** is practical for quick, yes/no screening of high-risk cases.
 
-- Use the **Linear** model if you need to **predict a precise number**.
+- **Generalized ordinal logistic regression** is the most informative when the goal is to understand **how different risk factors shape the full progression of inflammation**.
 
-- Use the **Binary Logistic** model if you need a **simple, fast screening tool** to find high-risk people.
-
-- Use the **Generalized Ordinal** model if you want the **deepest possible insight** from the data to inform public health strategies.
-
-This analysis confirms that the researcher must first define their final goal clearly before choosing a model.
+In practice, the “right” model depends on whether the focus is on **precision, screening, or deeper understanding of risk pathways**.
 
 
 # **Limitations**
 
-**Note on Variable Selection**
-In real-world clinical research, model selection is not solely based on statistical significance. In many cases, clinical expertise plays an important role, and certain variables may need to be included in the model even if their p-values are not statistically significant (e.g., p-value up to 0.25 is sometimes acceptable). For this project, however, I focused purely on statistical criteria and only included variables that were significant in the regression analysis, without applying additional clinical constraints
+**Variable Selection**
+In real-world clinical research, choosing which variables to include in a model often involves **both statistical evidence and clinical judgment**. Some variables may be included even if their p-values are not statistically significant (e.g., up to 0.25) because of known clinical importance.
+
+For this project, however, variable selection was based *strictly on statistical significance*. Only predictors that were significant in the regression analyses were included, and no additional clinical considerations were applied.
 
 # References
 
